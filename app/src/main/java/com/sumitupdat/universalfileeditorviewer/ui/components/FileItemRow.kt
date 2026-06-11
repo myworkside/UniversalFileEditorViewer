@@ -56,13 +56,18 @@ fun getFileIcon(fileItem: FileItem): ImageVector {
     return if (fileItem.isDirectory) {
         Icons.Default.Folder
     } else {
-        when (fileItem.extension) {
+        when (fileItem.extension.lowercase()) {
             "pdf" -> Icons.Default.PictureAsPdf
-            "jpg", "png", "gif", "webp" -> Icons.Default.Image
-            "mp3", "wav", "flac" -> Icons.Default.AudioFile
-            "mp4", "mkv", "avi" -> Icons.Default.VideoFile
-            "zip", "rar", "7z" -> Icons.Default.Inventory2
-            else -> Icons.Default.Description
+            "jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "svg" -> Icons.Default.Image
+            "mp3", "wav", "aac", "flac", "ogg", "m4a" -> Icons.Default.AudioFile
+            "mp4", "mkv", "avi", "mov", "webm", "flv", "3gp" -> Icons.Default.VideoFile
+            "zip", "rar", "7z", "tar", "gz" -> Icons.Default.Inventory2
+            "txt", "log", "ini", "cfg", "conf" -> Icons.Default.Description
+            "java", "kt", "py", "cpp", "c", "html", "css", "js", "php", "json", "xml", "yaml" -> Icons.Default.Code
+            "apk", "aab" -> Icons.Default.Android
+            "db", "sqlite" -> Icons.Default.Storage
+            "ttf", "otf" -> Icons.Default.FontDownload
+            else -> Icons.Default.InsertDriveFile
         }
     }
 }

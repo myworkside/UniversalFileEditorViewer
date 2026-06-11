@@ -1,5 +1,6 @@
 package com.sumitupdat.universalfileeditorviewer.viewmodel
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sumitupdat.universalfileeditorviewer.data.local.FavoriteFile
@@ -7,22 +8,19 @@ import com.sumitupdat.universalfileeditorviewer.data.local.RecentFile
 import com.sumitupdat.universalfileeditorviewer.data.model.FileItem
 import com.sumitupdat.universalfileeditorviewer.data.model.toFileItem
 import com.sumitupdat.universalfileeditorviewer.domain.repository.FileRepository
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.io.File
+
+private const val TAG = "FileViewModel"
 
 class FileViewModel(private val repository: FileRepository) : ViewModel() {
 
     private val _currentPath = MutableStateFlow("")
     val currentPath: StateFlow<String> = _currentPath.asStateFlow()
 
-    private val _files = MutableStateFlow<List<FileItem>>(emptyList())
-    val files: StateFlow<List<FileItem>> = _files.asStateFlow()
-
+    private val _rawFiles = MutableStateFlow<List<FileItem>>(emptyList())
+    
     private val _storageRoots = MutableStateFlow<List<FileItem>>(emptyList())
     val storageRoots: StateFlow<List<FileItem>> = _storageRoots.asStateFlow()
 
@@ -35,6 +33,12 @@ class FileViewModel(private val repository: FileRepository) : ViewModel() {
     val recentFiles: StateFlow<List<RecentFile>> = repository.getRecentFiles()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val files: StateFlow<List<FileItem>> = combine(_rawFiles, favorites) { files, favs ->
+        files.map { file ->
+            file.copy(isFavorite = favs.any { it.path == file.path })
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     init {
         refresh()
     }
@@ -44,21 +48,27 @@ class FileViewModel(private val repository: FileRepository) : ViewModel() {
     }
 
     fun loadStorageRoots() {
+        Log.d(TAG, "Loading storage roots...")
         val roots = repository.getStorageRoots().map { it.toFileItem() }
+        Log.d(TAG, "Found roots: ${roots.size}")
         _storageRoots.value = roots
         if (_currentPath.value.isEmpty() && roots.isNotEmpty()) {
+            Log.d(TAG, "Setting initial path to: ${roots[0].path}")
             loadFiles(roots[0].path)
         } else if (_currentPath.value.isNotEmpty()) {
+            Log.d(TAG, "Refreshing current path: ${_currentPath.value}")
             loadFiles(_currentPath.value)
         }
     }
 
     fun loadFiles(path: String) {
         viewModelScope.launch {
+            Log.d(TAG, "loadFiles: $path")
             _isLoading.value = true
             _currentPath.value = path
             val result = repository.getFiles(path)
-            _files.value = result
+            Log.d(TAG, "loadFiles result size: ${result.size}")
+            _rawFiles.value = result
             _isLoading.value = false
         }
     }
@@ -90,7 +100,7 @@ class FileViewModel(private val repository: FileRepository) : ViewModel() {
     fun toggleFavorite(fileItem: FileItem) {
         viewModelScope.launch {
             repository.toggleFavorite(fileItem)
-            loadFiles(_currentPath.value)
+            // No need to call loadFiles, combine will handle UI update
         }
     }
 
@@ -147,7 +157,7 @@ class FileViewModel(private val repository: FileRepository) : ViewModel() {
         _searchQuery.value = query
         viewModelScope.launch {
             val allFiles = repository.getFiles(_currentPath.value)
-            _files.value = if (query.isEmpty()) {
+            _rawFiles.value = if (query.isEmpty()) {
                 allFiles
             } else {
                 allFiles.filter { it.name.contains(query, ignoreCase = true) }

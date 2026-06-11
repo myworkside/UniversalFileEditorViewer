@@ -8,6 +8,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.sumitupdat.universalfileeditorviewer.ui.components.FileItemRow
@@ -89,7 +90,15 @@ fun FileBrowserScreen(
                 }
             } else {
                 TopAppBar(
-                    title = { Text(currentPath.split("/").last().ifEmpty { "Storage" }) },
+                    title = { 
+                        Column {
+                            val folderName = currentPath.split("/").last().ifEmpty { "Internal Storage" }
+                            Text("$folderName (${files.size})", style = MaterialTheme.typography.titleMedium)
+                            if (currentPath.isNotEmpty()) {
+                                Text(currentPath, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                            }
+                        }
+                    },
                     navigationIcon = {
                         Row {
                             IconButton(onClick = onMenuClick) {
@@ -101,6 +110,9 @@ fun FileBrowserScreen(
                         }
                     },
                     actions = {
+                        IconButton(onClick = { viewModel.refresh() }) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                        }
                         IconButton(onClick = { isSearching = true }) {
                             Icon(Icons.Default.Search, contentDescription = "Search")
                         }
@@ -109,7 +121,7 @@ fun FileBrowserScreen(
             }
         },
         floatingActionButton = {
-            Column {
+            Column(horizontalAlignment = Alignment.End) {
                 SmallFloatingActionButton(
                     onClick = {
                         createType = "File"
@@ -130,13 +142,35 @@ fun FileBrowserScreen(
     ) { padding ->
         Box(modifier = Modifier.padding(padding).fillMaxSize()) {
             if (isLoading) {
-                CircularProgressIndicator(modifier = Modifier.align(androidx.compose.ui.Alignment.Center))
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             } else if (files.isEmpty()) {
-                Text(
-                    text = if (searchQuery.isNotEmpty()) "No results found" else "Empty folder",
-                    modifier = Modifier.align(androidx.compose.ui.Alignment.Center),
-                    style = MaterialTheme.typography.bodyLarge
-                )
+                Column(
+                    modifier = Modifier.align(Alignment.Center).padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        imageVector = if (searchQuery.isNotEmpty()) Icons.Default.SearchOff else Icons.Default.FolderOpen,
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp),
+                        tint = MaterialTheme.colorScheme.outline
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = if (searchQuery.isNotEmpty()) "No results for \"$searchQuery\"" else "This folder is empty or inaccessible",
+                        style = MaterialTheme.typography.bodyLarge,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Make sure the app has storage permissions.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Button(onClick = { viewModel.refresh() }) {
+                        Text("Refresh List")
+                    }
+                }
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(files) { file ->

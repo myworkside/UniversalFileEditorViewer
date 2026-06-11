@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Environment
+import android.util.Log
 import androidx.core.content.FileProvider
 import com.sumitupdat.universalfileeditorviewer.data.local.FavoriteFile
 import com.sumitupdat.universalfileeditorviewer.data.local.FileDao
@@ -17,26 +18,40 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 
+private const val TAG = "FileRepository"
+
 class FileRepository(private val fileDao: FileDao, private val context: Context) {
 
     fun getStorageRoots(): List<File> {
         val roots = mutableListOf<File>()
-        // Internal Storage
-        roots.add(Environment.getExternalStorageDirectory())
-        // SD Cards
-        val externalFilesDirs = context.getExternalFilesDirs(null)
-        for (dir in externalFilesDirs) {
-            if (dir != null) {
-                val path = dir.absolutePath
-                val index = path.indexOf("/Android/data/")
-                if (index != -1) {
-                    val rootPath = path.substring(0, index)
-                    val root = File(rootPath)
-                    if (!roots.contains(root)) {
-                        roots.add(root)
+        try {
+            // Internal Storage
+            val internalRoot = Environment.getExternalStorageDirectory()
+            Log.d(TAG, "Internal Storage Root: ${internalRoot.absolutePath}")
+            if (internalRoot.exists()) {
+                roots.add(internalRoot)
+            } else {
+                val fallbackRoot = File("/storage/emulated/0")
+                if (fallbackRoot.exists()) roots.add(fallbackRoot)
+            }
+
+            // SD Cards and other external storage
+            val externalFilesDirs = context.getExternalFilesDirs(null)
+            for (dir in externalFilesDirs) {
+                if (dir != null) {
+                    val path = dir.absolutePath
+                    val index = path.indexOf("/Android/data/")
+                    if (index != -1) {
+                        val rootPath = path.substring(0, index)
+                        val root = File(rootPath)
+                        if (!roots.contains(root) && root.exists()) {
+                            roots.add(root)
+                        }
                     }
                 }
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting storage roots", e)
         }
         return roots
     }
@@ -45,14 +60,46 @@ class FileRepository(private val fileDao: FileDao, private val context: Context)
         try {
             val directory = File(directoryPath)
             if (directory.exists() && directory.isDirectory) {
-                directory.listFiles()?.map { it.toFileItem() }?.sortedWith(
+                val files = directory.listFiles()
+                if (files == null) {
+                    Log.e(TAG, "listFiles() returned null for $directoryPath")
+                    return@withContext emptyList()
+                }
+                files.map { it.toFileItem() }.sortedWith(
                     compareByDescending<FileItem> { it.isDirectory }.thenBy { it.name.lowercase() }
-                ) ?: emptyList()
+                )
             } else {
                 emptyList()
             }
         } catch (e: Exception) {
+            Log.e(TAG, "Exception in getFiles", e)
             emptyList()
+        }
+    }
+
+    suspend fun searchFiles(query: String, rootPath: String): List<FileItem> = withContext(Dispatchers.IO) {
+        val results = mutableListOf<File>()
+        try {
+            val root = File(rootPath)
+            if (root.exists() && root.isDirectory) {
+                searchRecursive(root, query, results)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Search error", e)
+        }
+        results.map { it.toFileItem() }
+    }
+
+    private fun searchRecursive(directory: File, query: String, results: MutableList<File>) {
+        val files = directory.listFiles() ?: return
+        for (file in files) {
+            if (file.name.contains(query, ignoreCase = true)) {
+                results.add(file)
+            }
+            if (file.isDirectory && results.size < 100) {
+                searchRecursive(file, query, results)
+            }
+            if (results.size >= 100) break
         }
     }
 
@@ -175,7 +222,6 @@ class FileRepository(private val fileDao: FileDao, private val context: Context)
         return FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
     }
 
-    // Database operations
     fun getFavorites(): Flow<List<FavoriteFile>> = fileDao.getFavorites()
     fun getRecentFiles(): Flow<List<RecentFile>> = fileDao.getRecentFiles()
 
