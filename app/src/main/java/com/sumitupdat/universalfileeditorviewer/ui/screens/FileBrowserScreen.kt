@@ -4,19 +4,14 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.sumitupdat.universalfileeditorviewer.ui.components.FileItemRow
 import com.sumitupdat.universalfileeditorviewer.viewmodel.FileViewModel
-
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Close
-
-import androidx.compose.material.icons.filled.Menu
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -30,6 +25,45 @@ fun FileBrowserScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     var isSearching by remember { mutableStateOf(false) }
+    
+    var showCreateDialog by remember { mutableStateOf(false) }
+    var createType by remember { mutableStateOf("Folder") } // "Folder" or "File"
+
+    if (showCreateDialog) {
+        var name by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showCreateDialog = false },
+            title = { Text("Create $createType") },
+            text = {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (name.isNotEmpty()) {
+                        if (createType == "Folder") {
+                            viewModel.createFolder(name)
+                        } else {
+                            viewModel.createFile(name)
+                        }
+                    }
+                    showCreateDialog = false
+                }) {
+                    Text("Create")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCreateDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -62,7 +96,7 @@ fun FileBrowserScreen(
                                 Icon(Icons.Default.Menu, contentDescription = "Menu")
                             }
                             IconButton(onClick = { viewModel.navigateUp() }) {
-                                Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                             }
                         }
                     },
@@ -75,30 +109,50 @@ fun FileBrowserScreen(
             }
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { /* TODO: Create file/folder */ }) {
-                Icon(Icons.Default.Add, contentDescription = "Add")
+            Column {
+                SmallFloatingActionButton(
+                    onClick = {
+                        createType = "File"
+                        showCreateDialog = true
+                    },
+                    modifier = Modifier.padding(bottom = 8.dp)
+                ) {
+                    Icon(Icons.Default.Description, contentDescription = "Create File")
+                }
+                FloatingActionButton(onClick = {
+                    createType = "Folder"
+                    showCreateDialog = true
+                }) {
+                    Icon(Icons.Default.CreateNewFolder, contentDescription = "Create Folder")
+                }
             }
         }
     ) { padding ->
-        if (isLoading) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
-                CircularProgressIndicator()
-            }
-        } else {
-            LazyColumn(modifier = Modifier.padding(padding)) {
-                items(files) { file ->
-                    FileItemRow(
-                        fileItem = file,
-                        onClick = {
-                            if (file.isDirectory) {
-                                viewModel.loadFiles(file.path)
-                            } else {
-                                onFileClick(file)
-                            }
-                        },
-                        onDelete = { viewModel.deleteFile(file) },
-                        onFavoriteToggle = { viewModel.toggleFavorite(file) }
-                    )
+        Box(modifier = Modifier.padding(padding).fillMaxSize()) {
+            if (isLoading) {
+                CircularProgressIndicator(modifier = Modifier.align(androidx.compose.ui.Alignment.Center))
+            } else if (files.isEmpty()) {
+                Text(
+                    text = if (searchQuery.isNotEmpty()) "No results found" else "Empty folder",
+                    modifier = Modifier.align(androidx.compose.ui.Alignment.Center),
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            } else {
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    items(files) { file ->
+                        FileItemRow(
+                            fileItem = file,
+                            onClick = {
+                                if (file.isDirectory) {
+                                    viewModel.loadFiles(file.path)
+                                } else {
+                                    onFileClick(file)
+                                }
+                            },
+                            onDelete = { viewModel.deleteFile(file) },
+                            onFavoriteToggle = { viewModel.toggleFavorite(file) }
+                        )
+                    }
                 }
             }
         }

@@ -30,40 +30,51 @@ import com.sumitupdat.universalfileeditorviewer.ui.screens.MainScreen
 import com.sumitupdat.universalfileeditorviewer.ui.theme.UniversalFileEditorViewerTheme
 
 class MainActivity : ComponentActivity() {
+    private lateinit var fileViewModel: FileViewModel
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         
+        val database = AppDatabase.getDatabase(this)
+        val repository = FileRepository(database.fileDao(), this)
+        fileViewModel = androidx.lifecycle.ViewModelProvider(this, object : androidx.lifecycle.ViewModelProvider.Factory {
+            override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+                @Suppress("UNCHECKED_CAST")
+                return FileViewModel(repository) as T
+            }
+        })[FileViewModel::class.java]
+
         requestPermissions()
 
         setContent {
             UniversalFileEditorViewerTheme {
-                val database = AppDatabase.getDatabase(this)
-                val repository = FileRepository(database.fileDao())
-                val fileViewModel: FileViewModel = viewModel(
-                    factory = object : androidx.lifecycle.ViewModelProvider.Factory {
-                        override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
-                            @Suppress("UNCHECKED_CAST")
-                            return FileViewModel(repository) as T
-                        }
-                    }
-                )
-
                 MainScreen(viewModel = fileViewModel)
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::fileViewModel.isInitialized) {
+            fileViewModel.refresh()
         }
     }
 
     private fun requestPermissions() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             if (!Environment.isExternalStorageManager()) {
-                val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
-                val uri = Uri.fromParts("package", packageName, null)
-                intent.data = uri
-                startActivity(intent)
+                try {
+                    val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                    val uri = Uri.fromParts("package", packageName, null)
+                    intent.data = uri
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                    startActivity(intent)
+                }
             }
         } else {
-            // Request READ/WRITE for older versions
             permissionLauncher.launch(
                 arrayOf(
                     android.Manifest.permission.READ_EXTERNAL_STORAGE,
