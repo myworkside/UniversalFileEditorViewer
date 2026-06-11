@@ -48,8 +48,8 @@ This application aims to:
 # 📥 Download
 
 APK Download:
-
-https://drive.google.com/file/d/1V2pswtKbR0PKkqoGLe2fLhqahMYUiavH/view
+LATEST V3.0  https://drive.google.com/file/d/1z0wwSSuUPOVdBlbk8R88fQgj2So_ftgf/view?usp=drive_link
+LATEST V2.0  https://drive.google.com/file/d/1V2pswtKbR0PKkqoGLe2fLhqahMYUiavH/view
 
 ---
 
