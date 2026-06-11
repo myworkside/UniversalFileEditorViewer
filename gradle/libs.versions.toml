@@ -14,8 +14,8 @@ coil = "2.7.0"
 ksp = "2.2.10-2.0.2"
 media3 = "1.6.0"
 commons-compress = "1.26.1"
-poi = "5.2.5"
-junrar = "7.5.5"
+poi = "5.5.1"
+junrar = "7.5.10"
 odfdom = "0.12.0"
 
 [libraries]
