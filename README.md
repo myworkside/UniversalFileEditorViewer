@@ -265,7 +265,7 @@ Contributions are welcome.
 
 # 📜 License
 
-MIT License
+apply MIT License
 
 You are free to use, modify, distribute, and contribute to this project.
 
