@@ -1,29 +1,84 @@
-# Universal File Editor & Viewer
+# 📂 Universal File Editor & Viewer
 
-Universal File Editor & Viewer is a powerful Android application that allows users to browse, open, view, edit, manage, and share multiple file formats from a single app.
+**Universal File Editor & Viewer** is a modern Android file management application designed to browse, open, view, edit, organize, and share a wide variety of file formats from a single, user-friendly interface.
 
-The goal of this project is to provide an all-in-one file management solution for Android devices, eliminating the need for multiple applications to handle different file types.
+Instead of installing separate applications for documents, images, videos, archives, source code, databases, and configuration files, Universal File Editor & Viewer brings everything together in one powerful app.
+
+The project is built with **Kotlin**, **Jetpack Compose**, and **MVVM Architecture**, providing a fast, modern, and scalable experience across Android devices.
 
 ---
 
-## Features
+# 🚀 Key Highlights
 
-### File Manager
+* 📁 Complete File Manager
+* 📝 Built-in Text & Code Editor
+* 📄 Document Viewer
+* 🖼 Image Viewer
+* 🎵 Audio Player
+* 🎬 Video Player
+* 📦 Archive Browser
+* 🗄 Database Viewer
+* 🤖 APK Analyzer
+* 🔍 Advanced Search
+* ⭐ Favorites
+* 🕒 Recent Files
+* 📤 File Sharing
+* 📋 Copy / Move / Rename
+* 🗑 Delete Files
+* 🌙 Dark Mode Support
+* 📱 Android 10–16 Compatible
+* ⚡ Material Design 3 UI
 
-* Browse Internal Storage
-* Browse SD Card Storage
-* Folder Navigation
-* File Search
-* Copy Files
-* Move Files
-* Rename Files
-* Delete Files
-* Share Files
-* Multi-Select Operations
-* Recent Files
-* Favorites
+---
 
-### Document Support
+# 🎯 Project Goals
+
+The primary goal of this project is to create an all-in-one file management solution capable of handling the most commonly used file types on Android devices.
+
+This application aims to:
+
+* Reduce dependency on multiple apps.
+* Improve productivity.
+* Simplify file organization.
+* Provide a consistent user experience.
+* Offer developers an open-source file management platform.
+
+---
+
+# 📥 Download
+
+APK Download:
+
+https://drive.google.com/file/d/1V2pswtKbR0PKkqoGLe2fLhqahMYUiavH/view
+
+---
+
+# 🐞 Bug Reports & Feedback
+
+Found a bug?
+
+Please include:
+
+* Device Model
+* Android Version
+* Screenshot
+* Screen Recording
+* File Type
+* Error Message
+
+Feature requests and bug reports are welcome.
+
+### Instagram Support
+
+For updates, support, bug reports, and feature requests:
+
+DM on Instagram.
+
+---
+
+# ✨ Supported File Types
+
+## 📄 Documents
 
 * TXT
 * PDF
@@ -33,7 +88,7 @@ The goal of this project is to provide an all-in-one file management solution fo
 * RTF
 * ODT
 
-### Image Support
+## 🖼 Images
 
 * JPG
 * PNG
@@ -44,7 +99,7 @@ The goal of this project is to provide an all-in-one file management solution fo
 * SVG
 * TIFF
 
-### Audio Support
+## 🎵 Audio
 
 * MP3
 * WAV
@@ -53,7 +108,7 @@ The goal of this project is to provide an all-in-one file management solution fo
 * OGG
 * M4A
 
-### Video Support
+## 🎬 Videos
 
 * MP4
 * MKV
@@ -63,7 +118,7 @@ The goal of this project is to provide an all-in-one file management solution fo
 * FLV
 * 3GP
 
-### Archive Support
+## 📦 Archives
 
 * ZIP
 * RAR
@@ -72,7 +127,7 @@ The goal of this project is to provide an all-in-one file management solution fo
 * GZ
 * ISO
 
-### Programming File Support
+## 💻 Programming Files
 
 * Java
 * Kotlin
@@ -87,7 +142,7 @@ The goal of this project is to provide an all-in-one file management solution fo
 * XML
 * YAML
 
-### Database Support
+## 🗄 Databases
 
 * SQLite
 * DB
@@ -95,26 +150,57 @@ The goal of this project is to provide an all-in-one file management solution fo
 * SQL
 * ACCDB
 
-### Android Support Files
+## 🔤 Fonts
+
+* TTF
+* OTF
+* WOFF
+* WOFF2
+
+## ⚙ Configuration Files
+
+* INI
+* CFG
+* CONF
+* JSON
+* XML
+* YAML
+
+## 📋 Logs
+
+* LOG
+* EVT
+* TRACE
+
+## 💾 Backup Files
+
+* BAK
+* OLD
+* TMP
+
+## 🤖 Android Files
 
 * APK
 * AAB
 * DEX
 * OBB
 
-### System & Configuration Files
+## 🐧 Linux Scripts
 
-* INI
-* CFG
-* CONF
-* LOG
-* XML
-* JSON
-* YAML
+* SH
+* BASH
+* RUN
+
+## 🪟 Windows Scripts
+
+* BAT
+* CMD
+* PS1
+* VBS
 
 ---
 
-## Technology Stack
+# 🛠 Technology Stack
 
 ### Language
 
@@ -127,15 +213,15 @@ The goal of this project is to provide an all-in-one file management solution fo
 
 ### Architecture
 
-* MVVM Architecture
+* MVVM
 
 ### Android Components
 
 * ViewModel
 * StateFlow
 * Navigation Compose
-* Room Database
 * Coroutines
+* Room Database
 
 ### Storage APIs
 
@@ -145,263 +231,53 @@ The goal of this project is to provide an all-in-one file management solution fo
 
 ---
 
-## Project Structure
+# 📈 Future Roadmap
 
-```text
-app/
-├── data/
-│   ├── repository/
-│   └── database/
-│
-├── ui/
-│   ├── screens/
-│   ├── components/
-│   └── theme/
-│
-├── viewmodel/
-│
-├── filemanager/
-│
-├── viewer/
-│
-├── editor/
-│
-└── MainActivity.kt
-```
-
----
-
-## How It Works
-
-### Step 1: Permission Handling
-
-The app requests storage permissions.
-
-Android 10:
-
-* READ_EXTERNAL_STORAGE
-* WRITE_EXTERNAL_STORAGE
-
-Android 11+:
-
-* MANAGE_EXTERNAL_STORAGE
-* Storage Access Framework
-
-### Step 2: File Scanning
-
-The repository scans:
-
-```text
-Internal Storage
-SD Card
-Downloads
-Documents
-Pictures
-Movies
-Music
-```
-
-The file list is loaded into ViewModel.
-
-### Step 3: UI Updates
-
-ViewModel sends data to Compose UI using StateFlow.
-
-```text
-Repository
-    ↓
-ViewModel
-    ↓
-StateFlow
-    ↓
-Compose UI
-```
-
-### Step 4: Open Files
-
-The app detects file type automatically.
-
-Examples:
-
-```text
-PDF  → PDF Viewer
-JPG  → Image Viewer
-MP3  → Audio Player
-MP4  → Video Player
-TXT  → Text Editor
-APK  → APK Analyzer
-ZIP  → Archive Viewer
-```
-
----
-
-## Build Requirements
-
-### Software
-
-* Android Studio Narwhal or newer
-* JDK 17
-* Gradle 8+
-* Android SDK 35
-
-### Minimum Android Version
-
-```text
-Min SDK : 29
-Target SDK : 35
-```
-
----
-
-## Installation
-
-Clone the repository:
-
-```bash
-git clone https://github.com/myworkside/UniversalFileEditorViewer.git
-```
-
-Open Android Studio:
-
-```text
-File
-→ Open
-→ UniversalFileEditorViewer
-```
-
-Sync Gradle:
-
-```text
-File
-→ Sync Project with Gradle Files
-```
-
-Run:
-
-```text
-Shift + F10
-```
-
----
-
-## Development Guide
-
-### Add New File Types
-
-1. Create Viewer
-2. Create Editor
-3. Register MIME Type
-4. Update File Repository
-5. Update UI Icons
-
-### Example
-
-```kotlin
-when(extension) {
-    "pdf" -> openPdf()
-    "txt" -> openText()
-    "jpg" -> openImage()
-}
-```
-
----
-
-## Common Issues
-
-### No Files Showing
-
-Possible causes:
-
-* Storage permission denied
-* SAF permission not granted
-* Repository scan failure
-* ViewModel not refreshing state
-
-### App Crashes
-
-Check:
-
-```text
-Logcat
-Build Output
-AndroidManifest.xml
-```
-
-### File Not Opening
-
-Verify:
-
-```text
-MIME type
-FileProvider
-URI permissions
-```
-
----
-
-## Roadmap
-
-### Planned Features
-
-* Cloud Storage Integration
-* Google Drive Support
-* OneDrive Support
-* Dropbox Support
-* Root File Explorer
-* Dual Pane Explorer
-* Advanced Code Editor
+* Google Drive Integration
+* OneDrive Integration
+* Dropbox Integration
+* FTP/SFTP Support
+* SMB Network Storage
+* Root Explorer
 * AI File Assistant
+* Advanced Code Editor
+* PDF Annotation
 * File Encryption
-* Password Vault
-* Built-in Media Player
+* Secure Vault
+* Built-in Media Streaming
+* Multi-Window File Explorer
+* Tablet Optimizations
 
 ---
 
-## Contributing
+# 🤝 Contributing
 
 Contributions are welcome.
 
-Steps:
-
-1. Fork Repository
-2. Create Branch
-
-```bash
-git checkout -b feature-name
-```
-
-3. Commit Changes
-
-```bash
-git commit -m "Added new feature"
-```
-
-4. Push Branch
-
-```bash
-git push origin feature-name
-```
-
-5. Open Pull Request
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push your branch
+5. Open a Pull Request
 
 ---
 
-## License
+# 📜 License
 
 MIT License
 
-You are free to use, modify, and distribute this project.
+You are free to use, modify, distribute, and contribute to this project.
 
 ---
 
-## Author
+# 👨‍💻 Author
 
-Sumit Mondal
+**Sumit Mondal**
 
 GitHub:
 https://github.com/myworkside
 
 Project:
-Universal File Editor & Viewer
+**Universal File Editor & Viewer**
 
-One App. All Files.
+### One App. All Files. Anywhere.
