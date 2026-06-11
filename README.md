@@ -69,6 +69,7 @@ Please include:
 Feature requests and bug reports are welcome.
 
 ### Instagram Support
+https://www.instagram.com/sumitupdat
 
 For updates, support, bug reports, and feature requests:
 
