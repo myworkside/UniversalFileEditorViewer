@@ -6,11 +6,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import com.sumitupdat.universalfileeditorviewer.data.model.FileCategory
 import com.sumitupdat.universalfileeditorviewer.data.model.FileItem
+import com.sumitupdat.universalfileeditorviewer.ui.theme.*
 
 import java.util.Locale
 import kotlin.math.log10
@@ -32,7 +34,7 @@ fun FileItemRow(
             Icon(
                 imageVector = getFileIcon(fileItem),
                 contentDescription = null,
-                tint = if (fileItem.isDirectory) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary
+                tint = if (fileItem.isDirectory) MaterialTheme.colorScheme.primary else getCategoryColor(fileItem.category)
             )
         },
         trailingContent = {
@@ -40,7 +42,8 @@ fun FileItemRow(
                 IconButton(onClick = onFavoriteToggle) {
                     Icon(
                         imageVector = if (fileItem.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                        contentDescription = "Favorite"
+                        contentDescription = "Favorite",
+                        tint = if (fileItem.isFavorite) CategoryFavorite else LocalContentColor.current
                     )
                 }
                 IconButton(onClick = onDelete) {
@@ -50,6 +53,24 @@ fun FileItemRow(
         },
         modifier = Modifier.clickable { onClick() }
     )
+}
+
+fun getCategoryColor(category: FileCategory): Color {
+    return when (category) {
+        FileCategory.DOCUMENTS -> CategoryDoc
+        FileCategory.IMAGES -> CategoryImage
+        FileCategory.AUDIO -> CategoryAudio
+        FileCategory.VIDEO -> CategoryVideo
+        FileCategory.ARCHIVES -> CategoryArchive
+        FileCategory.CODE -> CategoryCode
+        FileCategory.DATABASES -> CategoryDatabase
+        FileCategory.ANDROID -> CategoryAndroid
+        FileCategory.WEB -> CategoryWeb
+        FileCategory.FONTS -> CategoryFont
+        FileCategory.RECENT -> CategoryRecent
+        FileCategory.FAVORITES -> CategoryFavorite
+        else -> CategoryCode
+    }
 }
 
 fun getFileIcon(fileItem: FileItem): ImageVector {

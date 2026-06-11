@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.sumitupdat.universalfileeditorviewer"
-    compileSdk = 37 // Use direct number for simplicity if release() fails
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.sumitupdat.universalfileeditorviewer"
@@ -20,9 +20,8 @@ android {
 
     buildTypes {
         release {
-            optimization {
-                enable = false
-            }
+            isMinifyEnabled = false
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
     compileOptions {
@@ -31,6 +30,17 @@ android {
     }
     buildFeatures {
         compose = true
+    }
+
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "META-INF/DEPENDENCIES"
+            excludes += "META-INF/NOTICE"
+            excludes += "META-INF/LICENSE"
+            excludes += "META-INF/LICENSE.txt"
+            excludes += "META-INF/NOTICE.txt"
+        }
     }
 }
 
@@ -51,6 +61,11 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.ui)
+    implementation(libs.commons.compress)
+    implementation(libs.poi.ooxml)
+    implementation(libs.poi.scratchpad)
+    implementation(libs.junrar)
+    implementation(libs.odfdom.java)
 
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

@@ -6,13 +6,14 @@ import android.net.Uri
 import android.os.Environment
 import android.util.Log
 import androidx.core.content.FileProvider
-import com.sumitupdat.universalfileeditorviewer.data.local.FavoriteFile
-import com.sumitupdat.universalfileeditorviewer.data.local.FileDao
-import com.sumitupdat.universalfileeditorviewer.data.local.RecentFile
+import com.sumitupdat.universalfileeditorviewer.data.local.*
+import com.sumitupdat.universalfileeditorviewer.data.model.FileCategory
 import com.sumitupdat.universalfileeditorviewer.data.model.FileItem
+import com.sumitupdat.universalfileeditorviewer.data.model.getCategoryFromExtension
 import com.sumitupdat.universalfileeditorviewer.data.model.toFileItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileInputStream
@@ -25,28 +26,17 @@ class FileRepository(private val fileDao: FileDao, private val context: Context)
     fun getStorageRoots(): List<File> {
         val roots = mutableListOf<File>()
         try {
-            // Internal Storage
             val internalRoot = Environment.getExternalStorageDirectory()
-            Log.d(TAG, "Internal Storage Root: ${internalRoot.absolutePath}")
-            if (internalRoot.exists()) {
-                roots.add(internalRoot)
-            } else {
-                val fallbackRoot = File("/storage/emulated/0")
-                if (fallbackRoot.exists()) roots.add(fallbackRoot)
-            }
-
-            // SD Cards and other external storage
+            if (internalRoot.exists()) roots.add(internalRoot)
+            
             val externalFilesDirs = context.getExternalFilesDirs(null)
             for (dir in externalFilesDirs) {
                 if (dir != null) {
                     val path = dir.absolutePath
                     val index = path.indexOf("/Android/data/")
                     if (index != -1) {
-                        val rootPath = path.substring(0, index)
-                        val root = File(rootPath)
-                        if (!roots.contains(root) && root.exists()) {
-                            roots.add(root)
-                        }
+                        val root = File(path.substring(0, index))
+                        if (!roots.contains(root) && root.exists()) roots.add(root)
                     }
                 }
             }
@@ -56,50 +46,79 @@ class FileRepository(private val fileDao: FileDao, private val context: Context)
         return roots
     }
 
+    suspend fun startFullScan() = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "Starting exhaustive storage scan...")
+            val indexedFiles = mutableListOf<IndexedFile>()
+            val roots = getStorageRoots()
+            
+            for (root in roots) {
+                scanRecursive(root, indexedFiles)
+            }
+            
+            fileDao.clearIndex()
+            indexedFiles.chunked(1000).forEach { chunk ->
+                fileDao.insertIndex(chunk)
+            }
+            Log.d(TAG, "Scan completed. Indexed ${indexedFiles.size} files across all folders.")
+        } catch (e: Exception) {
+            Log.e(TAG, "Scan failed", e)
+        }
+    }
+
+    private fun scanRecursive(directory: File, results: MutableList<IndexedFile>) {
+        val files = directory.listFiles() ?: return
+        for (file in files) {
+            if (file.name.startsWith(".")) continue
+            
+            if (file.isDirectory) {
+                scanRecursive(file, results)
+            } else {
+                val extension = file.extension.lowercase()
+                results.add(IndexedFile(
+                    path = file.absolutePath,
+                    name = file.name,
+                    isDirectory = false,
+                    size = file.length(),
+                    lastModified = file.lastModified(),
+                    extension = extension,
+                    category = getCategoryFromExtension(extension, false)
+                ))
+            }
+        }
+    }
+
+    fun searchIndexedFiles(query: String): Flow<List<FileItem>> = 
+        fileDao.searchFiles(query).map { list -> list.map { it.toFileItem() } }
+    
+    fun getFilesByCategory(category: FileCategory): Flow<List<FileItem>> = 
+        fileDao.getFilesByCategory(category).map { list -> list.map { it.toFileItem() } }
+    
+    fun getCountByCategory(category: FileCategory): Flow<Int> = fileDao.getCountByCategory(category)
+
+    private fun IndexedFile.toFileItem(): FileItem = FileItem(
+        name = name,
+        path = path,
+        isDirectory = isDirectory,
+        size = size,
+        lastModified = lastModified,
+        extension = extension,
+        category = category
+    )
+
     suspend fun getFiles(directoryPath: String): List<FileItem> = withContext(Dispatchers.IO) {
         try {
             val directory = File(directoryPath)
             if (directory.exists() && directory.isDirectory) {
                 val files = directory.listFiles()
-                if (files == null) {
-                    Log.e(TAG, "listFiles() returned null for $directoryPath")
-                    return@withContext emptyList()
-                }
-                files.map { it.toFileItem() }.sortedWith(
+                files?.map { it.toFileItem() }?.sortedWith(
                     compareByDescending<FileItem> { it.isDirectory }.thenBy { it.name.lowercase() }
-                )
+                ) ?: emptyList()
             } else {
                 emptyList()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Exception in getFiles", e)
             emptyList()
-        }
-    }
-
-    suspend fun searchFiles(query: String, rootPath: String): List<FileItem> = withContext(Dispatchers.IO) {
-        val results = mutableListOf<File>()
-        try {
-            val root = File(rootPath)
-            if (root.exists() && root.isDirectory) {
-                searchRecursive(root, query, results)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Search error", e)
-        }
-        results.map { it.toFileItem() }
-    }
-
-    private fun searchRecursive(directory: File, query: String, results: MutableList<File>) {
-        val files = directory.listFiles() ?: return
-        for (file in files) {
-            if (file.name.contains(query, ignoreCase = true)) {
-                results.add(file)
-            }
-            if (file.isDirectory && results.size < 100) {
-                searchRecursive(file, query, results)
-            }
-            if (results.size >= 100) break
         }
     }
 
@@ -110,12 +129,8 @@ class FileRepository(private val fileDao: FileDao, private val context: Context)
                 val success = newFolder.mkdirs()
                 if (success) scanFile(newFolder)
                 success
-            } else {
-                false
-            }
-        } catch (e: Exception) {
-            false
-        }
+            } else false
+        } catch (e: Exception) { false }
     }
 
     suspend fun createFile(parentPath: String, fileName: String): Boolean = withContext(Dispatchers.IO) {
@@ -125,31 +140,19 @@ class FileRepository(private val fileDao: FileDao, private val context: Context)
                 val success = newFile.createNewFile()
                 if (success) scanFile(newFile)
                 success
-            } else {
-                false
-            }
-        } catch (e: Exception) {
-            false
-        }
+            } else false
+        } catch (e: Exception) { false }
     }
 
     suspend fun deleteFile(path: String): Boolean = withContext(Dispatchers.IO) {
         try {
             val file = File(path)
             if (file.exists()) {
-                val success = if (file.isDirectory) {
-                    file.deleteRecursively()
-                } else {
-                    file.delete()
-                }
+                val success = if (file.isDirectory) file.deleteRecursively() else file.delete()
                 if (success) scanFile(file)
                 success
-            } else {
-                false
-            }
-        } catch (e: Exception) {
-            false
-        }
+            } else false
+        } catch (e: Exception) { false }
     }
 
     suspend fun renameFile(oldPath: String, newName: String): Boolean = withContext(Dispatchers.IO) {
@@ -163,12 +166,8 @@ class FileRepository(private val fileDao: FileDao, private val context: Context)
                     scanFile(newFile)
                 }
                 success
-            } else {
-                false
-            }
-        } catch (e: Exception) {
-            false
-        }
+            } else false
+        } catch (e: Exception) { false }
     }
 
     suspend fun copyFile(sourcePath: String, destPath: String): Boolean = withContext(Dispatchers.IO) {
@@ -186,32 +185,22 @@ class FileRepository(private val fileDao: FileDao, private val context: Context)
             }
             scanFile(destFile)
             true
-        } catch (e: Exception) {
-            false
-        }
+        } catch (e: Exception) { false }
     }
 
     suspend fun moveFile(sourcePath: String, destPath: String): Boolean = withContext(Dispatchers.IO) {
         try {
             val sourceFile = File(sourcePath)
             val destFile = File(destPath)
-            val success = if (sourceFile.renameTo(destFile)) {
-                true
-            } else {
-                if (copyFile(sourcePath, destPath)) {
-                    deleteFile(sourcePath)
-                } else {
-                    false
-                }
-            }
+            val success = if (sourceFile.renameTo(destFile)) true
+            else if (copyFile(sourcePath, destPath)) { deleteFile(sourcePath); true }
+            else false
             if (success) {
                 scanFile(sourceFile)
                 scanFile(destFile)
             }
             success
-        } catch (e: Exception) {
-            false
-        }
+        } catch (e: Exception) { false }
     }
 
     private fun scanFile(file: File) {

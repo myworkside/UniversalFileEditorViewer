@@ -1,6 +1,7 @@
 package com.sumitupdat.universalfileeditorviewer.data.local
 
 import androidx.room.*
+import com.sumitupdat.universalfileeditorviewer.data.model.FileCategory
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -25,4 +26,20 @@ interface FileDao {
 
     @Query("DELETE FROM recent_files WHERE path = :path")
     suspend fun removeRecentFile(path: String)
+
+    // Indexing operations
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertIndex(files: List<IndexedFile>)
+
+    @Query("DELETE FROM file_index")
+    suspend fun clearIndex()
+
+    @Query("SELECT * FROM file_index WHERE name LIKE '%' || :query || '%' OR extension LIKE '%' || :query || '%'")
+    fun searchFiles(query: String): Flow<List<IndexedFile>>
+
+    @Query("SELECT * FROM file_index WHERE category = :category")
+    fun getFilesByCategory(category: FileCategory): Flow<List<IndexedFile>>
+
+    @Query("SELECT COUNT(*) FROM file_index WHERE category = :category")
+    fun getCountByCategory(category: FileCategory): Flow<Int>
 }

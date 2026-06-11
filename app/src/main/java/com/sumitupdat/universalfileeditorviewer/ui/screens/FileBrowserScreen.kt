@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.sumitupdat.universalfileeditorviewer.ui.components.FileItemRow
 import com.sumitupdat.universalfileeditorviewer.viewmodel.FileViewModel
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -22,13 +23,18 @@ fun FileBrowserScreen(
     onFileClick: (com.sumitupdat.universalfileeditorviewer.data.model.FileItem) -> Unit
 ) {
     val files by viewModel.files.collectAsState()
+    val searchResults by viewModel.globalSearchResults.collectAsState()
     val currentPath by viewModel.currentPath.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
+    val selectedCategory by viewModel.selectedCategory.collectAsState()
+    
     var isSearching by remember { mutableStateOf(false) }
     
     var showCreateDialog by remember { mutableStateOf(false) }
     var createType by remember { mutableStateOf("Folder") } // "Folder" or "File"
+
+    val displayFiles = if (searchQuery.isNotEmpty()) searchResults else files
 
     if (showCreateDialog) {
         var name by remember { mutableStateOf("") }
@@ -72,10 +78,13 @@ fun FileBrowserScreen(
                 SearchBar(
                     query = searchQuery,
                     onQueryChange = { viewModel.onSearchQueryChange(it) },
-                    onSearch = { isSearching = false },
+                    onSearch = { /* Done by flow */ },
                     active = true,
-                    onActiveChange = { if (!it) isSearching = false },
-                    placeholder = { Text("Search files...") },
+                    onActiveChange = { if (!it) {
+                        isSearching = false
+                        viewModel.onSearchQueryChange("")
+                    } },
+                    placeholder = { Text("Search all storage...") },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                     trailingIcon = {
                         IconButton(onClick = { 
@@ -87,14 +96,20 @@ fun FileBrowserScreen(
                     },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
                 ) {
+                    // Results are shown in the LazyColumn below the TopBar
                 }
             } else {
                 TopAppBar(
                     title = { 
                         Column {
-                            val folderName = currentPath.split("/").last().ifEmpty { "Internal Storage" }
-                            Text("$folderName (${files.size})", style = MaterialTheme.typography.titleMedium)
-                            if (currentPath.isNotEmpty()) {
+                            val category = selectedCategory
+                            val folderName = if (category != null) {
+                                category.name.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
+                            } else {
+                                currentPath.split("/").last().ifEmpty { "Internal Storage" }
+                            }
+                            Text("$folderName (${displayFiles.size})", style = MaterialTheme.typography.titleMedium)
+                            if (currentPath.isNotEmpty() && category == null) {
                                 Text(currentPath, style = MaterialTheme.typography.bodySmall, maxLines = 1)
                             }
                         }
@@ -121,21 +136,23 @@ fun FileBrowserScreen(
             }
         },
         floatingActionButton = {
-            Column(horizontalAlignment = Alignment.End) {
-                SmallFloatingActionButton(
-                    onClick = {
-                        createType = "File"
+            if (selectedCategory == null && searchQuery.isEmpty()) {
+                Column(horizontalAlignment = Alignment.End) {
+                    SmallFloatingActionButton(
+                        onClick = {
+                            createType = "File"
+                            showCreateDialog = true
+                        },
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    ) {
+                        Icon(Icons.Default.Description, contentDescription = "Create File")
+                    }
+                    FloatingActionButton(onClick = {
+                        createType = "Folder"
                         showCreateDialog = true
-                    },
-                    modifier = Modifier.padding(bottom = 8.dp)
-                ) {
-                    Icon(Icons.Default.Description, contentDescription = "Create File")
-                }
-                FloatingActionButton(onClick = {
-                    createType = "Folder"
-                    showCreateDialog = true
-                }) {
-                    Icon(Icons.Default.CreateNewFolder, contentDescription = "Create Folder")
+                    }) {
+                        Icon(Icons.Default.CreateNewFolder, contentDescription = "Create Folder")
+                    }
                 }
             }
         }
@@ -143,7 +160,7 @@ fun FileBrowserScreen(
         Box(modifier = Modifier.padding(padding).fillMaxSize()) {
             if (isLoading) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-            } else if (files.isEmpty()) {
+            } else if (displayFiles.isEmpty()) {
                 Column(
                     modifier = Modifier.align(Alignment.Center).padding(32.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
@@ -156,15 +173,9 @@ fun FileBrowserScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = if (searchQuery.isNotEmpty()) "No results for \"$searchQuery\"" else "This folder is empty or inaccessible",
+                        text = if (searchQuery.isNotEmpty()) "No results for \"$searchQuery\"" else "This category or folder is empty",
                         style = MaterialTheme.typography.bodyLarge,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Make sure the app has storage permissions.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.outline
                     )
                     Spacer(modifier = Modifier.height(24.dp))
                     Button(onClick = { viewModel.refresh() }) {
@@ -173,7 +184,7 @@ fun FileBrowserScreen(
                 }
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items(files) { file ->
+                    items(displayFiles) { file ->
                         FileItemRow(
                             fileItem = file,
                             onClick = {
