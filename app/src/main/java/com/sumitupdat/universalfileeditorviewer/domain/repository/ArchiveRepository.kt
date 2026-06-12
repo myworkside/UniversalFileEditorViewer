@@ -14,6 +14,15 @@ private const val TAG = "ArchiveRepository"
 
 class ArchiveRepository(private val context: Context) {
 
+    private fun resolveSafeOutputFile(targetDir: File, entryFileName: String): File {
+        val canonicalTargetDir = targetDir.canonicalFile
+        val outFile = File(canonicalTargetDir, entryFileName).canonicalFile
+        if (!outFile.toPath().startsWith(canonicalTargetDir.toPath())) {
+            throw SecurityException("Blocked archive entry outside target directory: $entryFileName")
+        }
+        return outFile
+    }
+
     suspend fun getArchiveEntries(file: File): List<ArchiveEntry> = withContext(Dispatchers.IO) {
         val entries = mutableListOf<ArchiveEntry>()
         try {
@@ -60,7 +69,7 @@ class ArchiveRepository(private val context: Context) {
             if (extension == "zip") {
                 ZipFile(archiveFile).use { zip ->
                     val entry = zip.getEntry(entryPath) ?: return@withContext null
-                    val outFile = File(targetDir, entry.name.substringAfterLast('/'))
+                    val outFile = resolveSafeOutputFile(targetDir, entry.name.substringAfterLast('/'))
                     zip.getInputStream(entry).use { input ->
                         FileOutputStream(outFile).use { output ->
                             input.copyTo(output)
@@ -71,7 +80,7 @@ class ArchiveRepository(private val context: Context) {
             } else if (extension == "rar") {
                 Archive(archiveFile).use { archive ->
                     val header = archive.fileHeaders.find { it.fileName == entryPath } ?: return@withContext null
-                    val outFile = File(targetDir, header.fileName.substringAfterLast('\\').substringAfterLast('/'))
+                    val outFile = resolveSafeOutputFile(targetDir, header.fileName.substringAfterLast('\\').substringAfterLast('/'))
                     FileOutputStream(outFile).use { output ->
                         archive.extractFile(header, output)
                     }
