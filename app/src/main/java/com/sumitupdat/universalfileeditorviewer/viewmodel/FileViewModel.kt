@@ -4,11 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sumitupdat.universalfileeditorviewer.data.local.FavoriteFile
 import com.sumitupdat.universalfileeditorviewer.data.local.RecentFile
-import com.sumitupdat.universalfileeditorviewer.data.model.FileCategory
-import com.sumitupdat.universalfileeditorviewer.data.model.FileItem
-import com.sumitupdat.universalfileeditorviewer.data.model.getCategoryFromExtension
-import com.sumitupdat.universalfileeditorviewer.data.model.toFileItem
+import com.sumitupdat.universalfileeditorviewer.data.model.*
+import com.sumitupdat.universalfileeditorviewer.domain.repository.ArchiveRepository
 import com.sumitupdat.universalfileeditorviewer.domain.repository.FileRepository
+import com.sumitupdat.universalfileeditorviewer.domain.repository.PresentationRepository
+import com.sumitupdat.universalfileeditorviewer.domain.repository.SpreadsheetRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.*
@@ -16,10 +16,116 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
-class FileViewModel(private val repository: FileRepository) : ViewModel() {
+class FileViewModel(
+    private val repository: FileRepository,
+    private val archiveRepository: ArchiveRepository,
+    private val spreadsheetRepository: SpreadsheetRepository,
+    private val presentationRepository: PresentationRepository
+) : ViewModel() {
 
     private val _currentPath = MutableStateFlow("")
     val currentPath: StateFlow<String> = _currentPath.asStateFlow()
+
+    // Viewer states
+    private val _spreadsheetData = MutableStateFlow<SpreadsheetData?>(null)
+    val spreadsheetData: StateFlow<SpreadsheetData?> = _spreadsheetData.asStateFlow()
+
+    private val _archiveEntries = MutableStateFlow<List<ArchiveEntry>>(emptyList())
+    val archiveEntries: StateFlow<List<ArchiveEntry>> = _archiveEntries.asStateFlow()
+
+    private val _presentationData = MutableStateFlow<PresentationData?>(null)
+    val presentationData: StateFlow<PresentationData?> = _presentationData.asStateFlow()
+
+    private val _viewerLoading = MutableStateFlow(false)
+    val viewerLoading: StateFlow<Boolean> = _viewerLoading.asStateFlow()
+
+    private val _viewerError = MutableStateFlow<String?>(null)
+    val viewerError: StateFlow<String?> = _viewerError.asStateFlow()
+
+    fun loadSpreadsheet(path: String) {
+        viewModelScope.launch {
+            _viewerLoading.value = true
+            _viewerError.value = null
+            try {
+                _spreadsheetData.value = spreadsheetRepository.readSpreadsheet(File(path))
+            } catch (e: Exception) {
+                _viewerError.value = "Failed to load spreadsheet: ${e.message}"
+            } finally {
+                _viewerLoading.value = false
+            }
+        }
+    }
+
+    fun loadArchive(path: String) {
+        viewModelScope.launch {
+            _viewerLoading.value = true
+            _viewerError.value = null
+            try {
+                _archiveEntries.value = archiveRepository.getArchiveEntries(File(path))
+            } catch (e: Exception) {
+                _viewerError.value = "Failed to load archive: ${e.message}"
+            } finally {
+                _viewerLoading.value = false
+            }
+        }
+    }
+
+    fun loadPresentation(path: String) {
+        viewModelScope.launch {
+            _viewerLoading.value = true
+            _viewerError.value = null
+            try {
+                _presentationData.value = presentationRepository.readPresentation(File(path))
+            } catch (e: Exception) {
+                _viewerError.value = "Failed to load presentation: ${e.message}"
+            } finally {
+                _viewerLoading.value = false
+            }
+        }
+    }
+
+    fun extractArchiveFile(archivePath: String, entryPath: String) {
+        viewModelScope.launch {
+            _viewerLoading.value = true
+            try {
+                val archiveFile = File(archivePath)
+                val targetDir = File(archiveFile.parent, "Extracted_${archiveFile.nameWithoutExtension}")
+                if (!targetDir.exists()) targetDir.mkdirs()
+                
+                val result = archiveRepository.extractFile(archiveFile, entryPath, targetDir)
+                if (result != null) {
+                    if (_currentPath.value == archiveFile.parent) loadFiles(_currentPath.value)
+                }
+            } catch (e: Exception) {
+                _viewerError.value = "Extraction failed: ${e.message}"
+            } finally {
+                _viewerLoading.value = false
+            }
+        }
+    }
+
+    fun extractAll(archivePath: String) {
+        viewModelScope.launch {
+            _viewerLoading.value = true
+            try {
+                val archiveFile = File(archivePath)
+                val targetDir = File(archiveFile.parent, "Extracted_${archiveFile.nameWithoutExtension}")
+                if (!targetDir.exists()) targetDir.mkdirs()
+                
+                val entries = archiveRepository.getArchiveEntries(archiveFile)
+                entries.forEach { entry ->
+                    if (!entry.isDirectory) {
+                        archiveRepository.extractFile(archiveFile, entry.path, targetDir)
+                    }
+                }
+                if (_currentPath.value == archiveFile.parent) loadFiles(_currentPath.value)
+            } catch (e: Exception) {
+                _viewerError.value = "Extraction failed: ${e.message}"
+            } finally {
+                _viewerLoading.value = false
+            }
+        }
+    }
 
     private val _rawFiles = MutableStateFlow<List<FileItem>>(emptyList())
     

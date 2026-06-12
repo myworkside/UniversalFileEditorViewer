@@ -4,16 +4,14 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
-import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import android.webkit.MimeTypeMap
+import android.widget.Toast
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
@@ -25,7 +23,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -35,20 +32,13 @@ import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
-import com.github.junrar.Archive
 import com.sumitupdat.universalfileeditorviewer.data.model.FileItem
 import com.sumitupdat.universalfileeditorviewer.ui.components.ZoomableBox
-import org.apache.commons.compress.archivers.ArchiveEntry
-import org.apache.commons.compress.archivers.ArchiveInputStream
-import org.apache.commons.compress.archivers.sevenz.SevenZFile
-import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
-import org.apache.commons.compress.archivers.zip.ZipFile
-import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream
-import org.apache.poi.xslf.usermodel.XMLSlideShow
-import org.apache.poi.xslf.usermodel.XSLFTextShape
-import org.apache.poi.xssf.usermodel.XSSFWorkbook
+import com.sumitupdat.universalfileeditorviewer.ui.screens.viewers.ArchiveViewerScreen
+import com.sumitupdat.universalfileeditorviewer.ui.screens.viewers.PptxViewerScreen
+import com.sumitupdat.universalfileeditorviewer.ui.screens.viewers.XlsxViewerScreen
+import com.sumitupdat.universalfileeditorviewer.viewmodel.FileViewModel
 import org.apache.poi.xwpf.usermodel.XWPFDocument
-import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileInputStream
 
@@ -57,14 +47,21 @@ private const val TAG = "FileViewerScreen"
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FileViewerScreen(fileItem: FileItem, onBack: () -> Unit) {
+fun FileViewerScreen(fileItem: FileItem, viewModel: FileViewModel, onBack: () -> Unit) {
     val context = LocalContext.current
     val file = File(fileItem.path)
     
+    val spreadsheetData by viewModel.spreadsheetData.collectAsState()
+    val archiveEntries by viewModel.archiveEntries.collectAsState()
+    val presentationData by viewModel.presentationData.collectAsState()
+    val isLoading by viewModel.viewerLoading.collectAsState()
+    val error by viewModel.viewerError.collectAsState()
+
     var textContent by remember { mutableStateOf("") }
     var isEditing by remember { mutableStateOf(false) }
-    var isLoading by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
+    var isTextLoading by remember { mutableStateOf(false) }
+    var isFullScreen by remember { mutableStateOf(false) }
+    var rotation by remember { mutableIntStateOf(0) }
 
     val extension = fileItem.extension.lowercase()
     
@@ -86,14 +83,20 @@ fun FileViewerScreen(fileItem: FileItem, onBack: () -> Unit) {
     }
 
     LaunchedEffect(fileItem.path, viewerType) {
-        if (viewerType == ViewerType.TEXT) {
-            isLoading = true
-            try {
-                textContent = if (file.length() > 512 * 1024) {
-                    "File is too large for internal editor. Showing preview...\n\n" + file.inputStream().bufferedReader().use { it.readText().take(5000) }
-                } else file.readText()
-            } catch (e: Exception) { error = "Error: ${e.message}" }
-            isLoading = false
+        when (viewerType) {
+            ViewerType.TEXT -> {
+                isTextLoading = true
+                try {
+                    textContent = if (file.length() > 512 * 1024) {
+                        "File is too large for internal editor. Showing preview...\n\n" + file.inputStream().bufferedReader().use { it.readText().take(5000) }
+                    } else file.readText()
+                } catch (e: Exception) { Log.e(TAG, "Text load error", e) }
+                isTextLoading = false
+            }
+            ViewerType.XLSX -> viewModel.loadSpreadsheet(fileItem.path)
+            ViewerType.ARCHIVE -> viewModel.loadArchive(fileItem.path)
+            ViewerType.PPTX -> viewModel.loadPresentation(fileItem.path)
+            else -> {}
         }
     }
 
@@ -106,7 +109,9 @@ fun FileViewerScreen(fileItem: FileItem, onBack: () -> Unit) {
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             context.startActivity(Intent.createChooser(intent, "Open with"))
-        } catch (e: Exception) { error = "No app found to open this file." }
+        } catch (e: Exception) {
+            Toast.makeText(context, "No app found to open this file.", Toast.LENGTH_SHORT).show()
+        }
     }
 
     fun shareFile() {
@@ -123,27 +128,30 @@ fun FileViewerScreen(fileItem: FileItem, onBack: () -> Unit) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(fileItem.name, maxLines = 1) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
-                actions = {
-                    if (viewerType == ViewerType.TEXT && file.length() < 1024 * 1024) {
-                        IconButton(onClick = { isEditing = !isEditing }) {
-                            Icon(if (isEditing) Icons.Default.Visibility else Icons.Default.Edit, "Toggle Edit")
+            if (!isFullScreen) {
+                TopAppBar(
+                    title = { Text(fileItem.name, maxLines = 1) },
+                    navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
+                    actions = {
+                        if (viewerType == ViewerType.TEXT && file.length() < 1024 * 1024) {
+                            IconButton(onClick = { isEditing = !isEditing }) {
+                                Icon(if (isEditing) Icons.Default.Visibility else Icons.Default.Edit, "Toggle Edit")
+                            }
                         }
+                        IconButton(onClick = { isFullScreen = true }) { Icon(Icons.Default.Fullscreen, "Full Screen") }
+                        IconButton(onClick = { rotation = (rotation + 90) % 360 }) { Icon(Icons.AutoMirrored.Filled.RotateRight, "Rotate") }
+                        IconButton(onClick = { shareFile() }) { Icon(Icons.Default.Share, "Share") }
+                        IconButton(onClick = { openInExternalApp() }) { Icon(Icons.AutoMirrored.Filled.OpenInNew, "Open In") }
                     }
-                    IconButton(onClick = { shareFile() }) { Icon(Icons.Default.Share, "Share") }
-                    IconButton(onClick = { openInExternalApp() }) { Icon(Icons.AutoMirrored.Filled.OpenInNew, "Open In") }
-                }
-            )
+                )
+            }
         }
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-            if (isLoading) CircularProgressIndicator()
+        Box(modifier = Modifier.fillMaxSize().padding(if (isFullScreen) PaddingValues(0.dp) else padding), contentAlignment = Alignment.Center) {
+            if (isLoading || isTextLoading) CircularProgressIndicator()
             else if (error != null) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(error!!, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
-                    Spacer(Modifier.height(16.dp))
+                    Text(error!!, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center, modifier = Modifier.padding(16.dp))
                     Button(onClick = { openInExternalApp() }) { Text("Try External App") }
                 }
             } else {
@@ -155,28 +163,41 @@ fun FileViewerScreen(fileItem: FileItem, onBack: () -> Unit) {
                             Text(textContent, modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()), fontSize = 14.sp)
                         }
                     }
-                    ViewerType.IMAGE -> ZoomableBox(modifier = Modifier.fillMaxSize()) {
+                    ViewerType.IMAGE -> ZoomableBox(modifier = Modifier.fillMaxSize(), rotation = rotation.toFloat()) {
                         AsyncImage(model = file, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
                     }
                     ViewerType.VIDEO -> VideoPlayer(file = file)
                     ViewerType.AUDIO -> AudioPlayer(file = file)
                     ViewerType.PDF -> PdfViewer(file = file)
-                    ViewerType.ARCHIVE -> ArchiveViewer(file = file)
-                    ViewerType.XLSX -> XlsxViewer(file = file)
-                    ViewerType.PPTX -> PptxViewer(file = file)
+                    ViewerType.ARCHIVE -> ArchiveViewerScreen(
+                        entries = archiveEntries,
+                        onExtract = { viewModel.extractArchiveFile(fileItem.path, it.path) },
+                        onExtractAll = { viewModel.extractAll(fileItem.path) }
+                    )
+                    ViewerType.XLSX -> spreadsheetData?.let { XlsxViewerScreen(data = it) }
+                    ViewerType.PPTX -> presentationData?.let { PptxViewerScreen(data = it) }
                     ViewerType.DOCX -> DocxViewer(file = file)
                     ViewerType.APK -> ApkViewer(file = file)
                     ViewerType.SQLITE -> SqliteViewer(file = file)
                     ViewerType.EXTERNAL -> {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(imageVector = com.sumitupdat.universalfileeditorviewer.ui.components.getFileIcon(fileItem), contentDescription = null, modifier = Modifier.size(120.dp), tint = MaterialTheme.colorScheme.primary)
+                            Icon(imageVector = Icons.Default.FilePresent, contentDescription = null, modifier = Modifier.size(120.dp), tint = MaterialTheme.colorScheme.primary)
                             Spacer(Modifier.height(16.dp))
                             Text(fileItem.name, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
-                            Text(com.sumitupdat.universalfileeditorviewer.ui.components.formatSize(fileItem.size), style = MaterialTheme.typography.bodyMedium)
                             Spacer(Modifier.height(32.dp))
                             Button(onClick = { openInExternalApp() }) { Text("Open in external app") }
                         }
                     }
+                }
+            }
+            
+            if (isFullScreen) {
+                IconButton(
+                    onClick = { isFullScreen = false },
+                    modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
+                    colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
+                ) {
+                    Icon(Icons.Default.FullscreenExit, "Exit Full Screen")
                 }
             }
         }
@@ -231,108 +252,6 @@ fun PdfViewer(file: File) {
         LazyColumn(Modifier.fillMaxSize()) { items(bitmaps) { bitmap ->
             Image(bitmap = bitmap.asImageBitmap(), contentDescription = null, modifier = Modifier.fillMaxWidth().padding(8.dp), contentScale = ContentScale.FillWidth)
         }}
-    }
-}
-
-@Composable
-fun ArchiveViewer(file: File) {
-    var entries by remember { mutableStateOf<List<String>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
-
-    LaunchedEffect(file) {
-        isLoading = true
-        try {
-            val list = mutableListOf<String>()
-            val extension = file.extension.lowercase()
-            when (extension) {
-                "zip" -> ZipFile(file).use { zip -> list.addAll(zip.entries.asSequence().map { it.name }) }
-                "rar" -> Archive(file).use { archive -> list.addAll(archive.fileHeaders.map { it.fileNameString }) }
-                "7z" -> SevenZFile(file).use { sz -> 
-                    var entry = sz.nextEntry
-                    while(entry != null) { list.add(entry.name); entry = sz.nextEntry }
-                }
-                "tar" -> TarArchiveInputStream(BufferedInputStream(FileInputStream(file))).use { ais ->
-                    var entry = ais.nextEntry
-                    while(entry != null) { list.add(entry.name); entry = ais.nextEntry }
-                }
-                "gz" -> GzipCompressorInputStream(BufferedInputStream(FileInputStream(file))).use { list.add(file.name.removeSuffix(".gz")) }
-            }
-            entries = list
-        } catch (e: Exception) { Log.e(TAG, "Archive error", e) }
-        isLoading = false
-    }
-
-    if (isLoading) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-    else LazyColumn(Modifier.fillMaxSize()) {
-        items(entries) { entry ->
-            ListItem(headlineContent = { Text(entry) }, leadingContent = { Icon(Icons.AutoMirrored.Filled.InsertDriveFile, null) }, trailingContent = { Icon(Icons.Default.FileDownload, "Extract") })
-            HorizontalDivider()
-        }
-    }
-}
-
-@Composable
-fun XlsxViewer(file: File) {
-    var workbook by remember { mutableStateOf<XSSFWorkbook?>(null) }
-    var selectedSheet by remember { mutableIntStateOf(0) }
-    LaunchedEffect(file) {
-        try { FileInputStream(file).use { fis -> workbook = XSSFWorkbook(fis) } } catch (e: Exception) { }
-    }
-    Column(Modifier.fillMaxSize()) {
-        workbook?.let { wb ->
-            LazyRow(Modifier.fillMaxWidth().padding(8.dp)) {
-                items(wb.numberOfSheets) { i ->
-                    FilterChip(selected = selectedSheet == i, onClick = { selectedSheet = i }, label = { Text(wb.getSheetName(i)) }, modifier = Modifier.padding(horizontal = 4.dp))
-                }
-            }
-            val sheet = wb.getSheetAt(selectedSheet)
-            ZoomableBox(Modifier.weight(1f)) {
-                val sv = rememberScrollState(); val sh = rememberScrollState()
-                Column(Modifier.fillMaxSize().verticalScroll(sv).horizontalScroll(sh).padding(16.dp)) {
-                    for (row in sheet) {
-                        Row {
-                            for (cell in row) {
-                                val value = try { when (cell.cellType) {
-                                    org.apache.poi.ss.usermodel.CellType.NUMERIC -> cell.numericCellValue.toString()
-                                    org.apache.poi.ss.usermodel.CellType.STRING -> cell.stringCellValue
-                                    else -> ""
-                                } } catch (e: Exception) { "" }
-                                Surface(Modifier.width(100.dp).height(30.dp).padding(1.dp), border = BorderStroke(0.5.dp, Color.Gray)) {
-                                    Text(value, maxLines = 1, fontSize = 10.sp, modifier = Modifier.padding(2.dp))
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        } ?: Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-    }
-}
-
-@Composable
-fun PptxViewer(file: File) {
-    var slideshow by remember { mutableStateOf<XMLSlideShow?>(null) }
-    var current by remember { mutableIntStateOf(0) }
-    LaunchedEffect(file) {
-        try { FileInputStream(file).use { fis -> slideshow = XMLSlideShow(fis) } } catch (e: Exception) { }
-    }
-    Column(Modifier.fillMaxSize()) {
-        slideshow?.let { ss ->
-            val slides = ss.slides
-            if (slides.isNotEmpty()) {
-                ZoomableBox(Modifier.weight(1f)) {
-                    val slide = slides[current]
-                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(32.dp)) {
-                        slide.shapes.forEach { if (it is XSLFTextShape) Text(it.text, style = MaterialTheme.typography.bodyLarge) }
-                    }
-                }
-                Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                    IconButton(onClick = { if (current > 0) current-- }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) }
-                    Text("Slide ${current + 1} / ${slides.size}")
-                    IconButton(onClick = { if (current < slides.size - 1) current++ }) { Icon(Icons.AutoMirrored.Filled.ArrowForward, null) }
-                }
-            }
-        } ?: Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
     }
 }
 

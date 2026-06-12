@@ -13,7 +13,10 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import com.sumitupdat.universalfileeditorviewer.data.local.AppDatabase
+import com.sumitupdat.universalfileeditorviewer.domain.repository.ArchiveRepository
 import com.sumitupdat.universalfileeditorviewer.domain.repository.FileRepository
+import com.sumitupdat.universalfileeditorviewer.domain.repository.PresentationRepository
+import com.sumitupdat.universalfileeditorviewer.domain.repository.SpreadsheetRepository
 import com.sumitupdat.universalfileeditorviewer.ui.screens.MainScreen
 import com.sumitupdat.universalfileeditorviewer.ui.theme.UniversalFileEditorViewerTheme
 import com.sumitupdat.universalfileeditorviewer.viewmodel.FileViewModel
@@ -31,10 +34,19 @@ class MainActivity : ComponentActivity() {
 
         val database = AppDatabase.getDatabase(this)
         val repository = FileRepository(database.fileDao(), this)
+        val archiveRepository = ArchiveRepository(this)
+        val spreadsheetRepository = SpreadsheetRepository(this)
+        val presentationRepository = PresentationRepository(this)
+
         fileViewModel = androidx.lifecycle.ViewModelProvider(this, object : androidx.lifecycle.ViewModelProvider.Factory {
             override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
                 @Suppress("UNCHECKED_CAST")
-                return FileViewModel(repository) as T
+                return FileViewModel(
+                    repository,
+                    archiveRepository,
+                    spreadsheetRepository,
+                    presentationRepository
+                ) as T
             }
         })[FileViewModel::class.java]
 
