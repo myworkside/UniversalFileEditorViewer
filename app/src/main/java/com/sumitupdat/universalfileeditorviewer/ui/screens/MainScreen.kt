@@ -1,17 +1,23 @@
 package com.sumitupdat.universalfileeditorviewer.ui.screens
 
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -29,6 +35,13 @@ import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.Locale
 
+data class NavItem(
+    val route: String,
+    val label: String,
+    val icon: ImageVector,
+    val selectedIcon: ImageVector
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(viewModel: FileViewModel) {
@@ -42,184 +55,292 @@ fun MainScreen(viewModel: FileViewModel) {
 
     var isSearching by remember { mutableStateOf(false) }
 
-    Scaffold(
-        topBar = {
-            Column {
-                if (isSearching) {
-                    SearchBar(
-                        query = searchQuery,
-                        onQueryChange = { viewModel.onSearchQueryChange(it) },
-                        onSearch = { isSearching = false },
-                        active = true,
-                        onActiveChange = { if (!it) {
-                            isSearching = false
-                            viewModel.onSearchQueryChange("")
-                        } },
-                        placeholder = { Text("Search all storage...") },
-                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                        trailingIcon = {
-                            IconButton(onClick = { 
-                                if (searchQuery.isNotEmpty()) viewModel.onSearchQueryChange("")
-                                else isSearching = false 
-                            }) {
-                                Icon(Icons.Default.Close, contentDescription = "Close")
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
-                    ) { }
-                } else {
-                    TopAppBar(
-                        title = { 
-                            Column {
-                                val title = if (currentRoute == "browser") {
-                                    val category = selectedCategory
-                                    if (category != null) {
-                                        category.name.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
-                                    } else {
-                                        currentPath.split("/").last().ifEmpty { "Explorer" }
+    val navItems = listOf(
+        NavItem("dashboard", "Home", Icons.Outlined.Home, Icons.Filled.Home),
+        NavItem("browser", "Explorer", Icons.Outlined.Folder, Icons.Filled.Folder),
+        NavItem("recent", "Recent", Icons.Outlined.History, Icons.Filled.History),
+        NavItem("favorites", "Favorites", Icons.Outlined.Star, Icons.Filled.Star),
+        NavItem("wireless", "Wireless Sharing", Icons.Outlined.Wifi, Icons.Filled.Wifi),
+        NavItem("devtools", "Developer Tools", Icons.Outlined.Build, Icons.Filled.Build),
+        NavItem("cloud", "Cloud Storage", Icons.Outlined.Cloud, Icons.Filled.Cloud),
+        NavItem("analyzer", "Analytics", Icons.Outlined.Analytics, Icons.Filled.Analytics),
+        NavItem("settings", "Settings", Icons.Outlined.Settings, Icons.Filled.Settings),
+        NavItem("about", "About", Icons.Outlined.Info, Icons.Filled.Info)
+    )
+
+    BoxWithConstraints {
+        val isWideScreen = maxWidth >= 600.dp
+        
+        Row(modifier = Modifier.fillMaxSize()) {
+            if (isWideScreen && !isSearching) {
+                NavigationRail(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.verticalScroll(rememberScrollState())
+                ) {
+                    Spacer(Modifier.height(8.dp))
+                    navItems.forEach { item ->
+                        val selected = currentRoute == item.route
+                        NavigationRailItem(
+                            selected = selected,
+                            onClick = {
+                                if (currentRoute != item.route) {
+                                    navController.navigate(item.route) {
+                                        popUpTo("dashboard") { saveState = true }
+                                        launchSingleTop = true
+                                        restoreState = true
                                     }
-                                } else {
-                                    getRouteTitle(currentRoute)
                                 }
-                                Text(text = title, style = MaterialTheme.typography.titleLarge)
-                                if (currentRoute == "browser" && currentPath.isNotEmpty() && selectedCategory == null) {
-                                    Text(currentPath, style = MaterialTheme.typography.bodySmall, maxLines = 1)
-                                }
-                            }
-                        },
-                        navigationIcon = {
-                            if (currentRoute == "browser" && (currentPath.isNotEmpty() || selectedCategory != null)) {
-                                IconButton(onClick = { viewModel.navigateUp() }) {
-                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                                }
-                            } else {
-                                IconButton(onClick = { /* Open Drawer */ }) {
-                                    Icon(Icons.Default.Menu, contentDescription = "Menu")
-                                }
-                            }
-                        },
-                        actions = {
-                            IconButton(onClick = { isSearching = true }) {
-                                Icon(Icons.Default.Search, contentDescription = "Search")
-                            }
-                            IconButton(onClick = { viewModel.refresh() }) {
-                                Icon(Icons.Default.Refresh, contentDescription = "Refresh")
-                            }
-                        }
-                    )
-                }
-                
-                if (!isSearching) {
-                    // Horizontal Navigation Row
-                    val selectedIndex = getTabIndex(currentRoute)
-                    if (selectedIndex != -1) {
-                        ScrollableTabRow(
-                            selectedTabIndex = selectedIndex,
-                            edgePadding = 16.dp,
-                            containerColor = MaterialTheme.colorScheme.background,
-                            divider = {},
-                            indicator = { tabPositions ->
-                                TabRowDefaults.SecondaryIndicator(
-                                    Modifier.tabIndicatorOffset(tabPositions[selectedIndex]),
-                                    color = MaterialTheme.colorScheme.primary
+                            },
+                            icon = {
+                                Icon(
+                                    imageVector = if (selected) item.selectedIcon else item.icon,
+                                    contentDescription = item.label
                                 )
-                            }
-                        ) {
-                            TabItem(navController, "dashboard", "Home", Icons.Default.Home, currentRoute)
-                            TabItem(navController, "browser", "Explorer", Icons.Default.Folder, currentRoute)
-                            TabItem(navController, "recent", "Recent", Icons.Default.History, currentRoute)
-                            TabItem(navController, "favorites", "Favorites", Icons.Default.Star, currentRoute)
-                            TabItem(navController, "analyzer", "Analytics", Icons.Default.Analytics, currentRoute)
-                            TabItem(navController, "settings", "Settings", Icons.Default.Settings, currentRoute)
-                        }
+                            },
+                            label = { Text(item.label) }
+                        )
                     }
                 }
             }
-        },
-        floatingActionButton = {
-            if ((currentRoute == "dashboard" || currentRoute == "browser") && !isSearching) {
-                FloatingActionButton(
-                    onClick = { isSearching = true },
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    shape = RoundedCornerShape(24.dp)
-                ) {
-                    Icon(Icons.Default.Search, contentDescription = "Search")
+
+            Scaffold(
+                topBar = {
+                    if (isSearching) {
+                        SearchBar(
+                            query = searchQuery,
+                            onQueryChange = { viewModel.onSearchQueryChange(it) },
+                            onSearch = { isSearching = false },
+                            active = true,
+                            onActiveChange = { if (!it) {
+                                isSearching = false
+                                viewModel.onSearchQueryChange("")
+                            } },
+                            placeholder = { Text("Search all storage...") },
+                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                            trailingIcon = {
+                                IconButton(onClick = { 
+                                    if (searchQuery.isNotEmpty()) viewModel.onSearchQueryChange("")
+                                    else isSearching = false 
+                                }) {
+                                    Icon(Icons.Default.Close, contentDescription = "Close")
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                        ) { }
+                    } else {
+                        TopAppBar(
+                            title = { 
+                                Column {
+                                    val title = if (currentRoute == "browser") {
+                                        val category = selectedCategory
+                                        if (category != null) {
+                                            category.name.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
+                                        } else {
+                                            currentPath.split("/").last().ifEmpty { "Explorer" }
+                                        }
+                                    } else {
+                                        getRouteTitle(currentRoute)
+                                    }
+                                    Text(text = title, style = MaterialTheme.typography.titleLarge)
+                                    if (currentRoute == "browser" && currentPath.isNotEmpty() && selectedCategory == null) {
+                                        Text(currentPath, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                                    }
+                                }
+                            },
+                            navigationIcon = {
+                                if (currentRoute == "browser" && (currentPath.isNotEmpty() || selectedCategory != null)) {
+                                    IconButton(onClick = { viewModel.navigateUp() }) {
+                                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                                    }
+                                } else {
+                                    IconButton(onClick = { /* Open Drawer */ }) {
+                                        Icon(Icons.Default.Menu, contentDescription = "Menu")
+                                    }
+                                }
+                            },
+                            actions = {
+                                IconButton(onClick = { isSearching = true }) {
+                                    Icon(Icons.Default.Search, contentDescription = "Search")
+                                }
+                                IconButton(onClick = { viewModel.refresh() }) {
+                                    Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                                }
+                            }
+                        )
+                    }
+                },
+                bottomBar = {
+                    if (!isWideScreen && !isSearching) {
+                        Surface(
+                            tonalElevation = 3.dp,
+                            shadowElevation = 8.dp
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState())
+                            ) {
+                                NavigationBar(
+                                    modifier = Modifier.width(850.dp), // Fixed width to allow scrolling 10 items
+                                    containerColor = Color.Transparent,
+                                    tonalElevation = 0.dp
+                                ) {
+                                    navItems.forEach { item ->
+                                        val selected = currentRoute == item.route
+                                        NavigationBarItem(
+                                            selected = selected,
+                                            onClick = {
+                                                if (currentRoute != item.route) {
+                                                    navController.navigate(item.route) {
+                                                        popUpTo("dashboard") { saveState = true }
+                                                        launchSingleTop = true
+                                                        restoreState = true
+                                                    }
+                                                }
+                                            },
+                                            icon = {
+                                                Icon(
+                                                    imageVector = if (selected) item.selectedIcon else item.icon,
+                                                    contentDescription = item.label
+                                                )
+                                            },
+                                            label = { Text(item.label, maxLines = 1) }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                floatingActionButton = {
+                    if ((currentRoute == "dashboard" || currentRoute == "browser") && !isSearching) {
+                        FloatingActionButton(
+                            onClick = { isSearching = true },
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            shape = RoundedCornerShape(24.dp)
+                        ) {
+                            Icon(Icons.Default.Search, contentDescription = "Search")
+                        }
+                    }
+                }
+            ) { padding ->
+                Box(modifier = Modifier.padding(padding).fillMaxSize()) {
+                    NavHost(
+                        navController = navController, 
+                        startDestination = "dashboard",
+                        enterTransition = { fadeIn(tween(300)) + slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Start, tween(300)) },
+                        exitTransition = { fadeOut(tween(300)) + slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Start, tween(300)) },
+                        popEnterTransition = { fadeIn(tween(300)) + slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.End, tween(300)) },
+                        popExitTransition = { fadeOut(tween(300)) + slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.End, tween(300)) }
+                    ) {
+                        composable("dashboard") {
+                            DashboardScreen(
+                                viewModel = viewModel,
+                                onCategoryClick = { category ->
+                                    viewModel.selectCategory(category)
+                                    navController.navigate("browser")
+                                },
+                                onMenuClick = { }
+                            )
+                        }
+                        composable("browser") {
+                            FileBrowserContent(
+                                viewModel = viewModel,
+                                onFileClick = { file ->
+                                    if (!file.isDirectory) {
+                                        viewModel.addRecentFile(file)
+                                        val encodedPath = URLEncoder.encode(file.path, StandardCharsets.UTF_8.toString())
+                                        navController.navigate("viewer/$encodedPath")
+                                    }
+                                }
+                            )
+                        }
+                        composable("recent") {
+                            val recentFiles by viewModel.recentFiles.collectAsState()
+                            SimpleFileList(
+                                files = recentFiles.map { FileItem(it.name, it.path, it.isDirectory, extension = File(it.path).extension) },
+                                onFileClick = { file ->
+                                    val encodedPath = URLEncoder.encode(file.path, StandardCharsets.UTF_8.toString())
+                                    navController.navigate("viewer/$encodedPath")
+                                },
+                                onDelete = { file -> viewModel.deleteFile(file) }
+                            )
+                        }
+                        composable("favorites") {
+                            val favorites by viewModel.favorites.collectAsState()
+                            SimpleFileList(
+                                files = favorites.map { FileItem(it.name, it.path, it.isDirectory, extension = File(it.path).extension, isFavorite = true) },
+                                onFileClick = { file ->
+                                    val encodedPath = URLEncoder.encode(file.path, StandardCharsets.UTF_8.toString())
+                                    navController.navigate("viewer/$encodedPath")
+                                },
+                                onDelete = { file -> viewModel.deleteFile(file) }
+                            )
+                        }
+                        composable("viewer/{filePath}") { backStackEntry ->
+                            val encodedPath = backStackEntry.arguments?.getString("filePath") ?: ""
+                            val path = URLDecoder.decode(encodedPath, StandardCharsets.UTF_8.toString())
+                            val file = File(path)
+                            FileViewerScreen(
+                                fileItem = FileItem(
+                                    name = file.name,
+                                    path = file.absolutePath,
+                                    isDirectory = file.isDirectory,
+                                    size = file.length(),
+                                    extension = file.extension.lowercase()
+                                ),
+                                viewModel = viewModel,
+                                onBack = { navController.popBackStack() }
+                            )
+                        }
+                        composable("analyzer") {
+                            StorageAnalyzerScreen(onBack = { navController.popBackStack() })
+                        }
+                        composable("settings") {
+                            PlaceholderScreen("Settings", Icons.Default.Settings)
+                        }
+                        composable("wireless") {
+                            PlaceholderScreen("Wireless Sharing", Icons.Default.Wifi)
+                        }
+                        composable("devtools") {
+                            PlaceholderScreen("Developer Tools", Icons.Default.Build)
+                        }
+                        composable("cloud") {
+                            PlaceholderScreen("Cloud Storage", Icons.Default.Cloud)
+                        }
+                        composable("about") {
+                            PlaceholderScreen("About", Icons.Default.Info)
+                        }
+                    }
                 }
             }
         }
-    ) { padding ->
-        Box(modifier = Modifier.padding(padding).fillMaxSize()) {
-            NavHost(navController = navController, startDestination = "dashboard") {
-                composable("dashboard") {
-                    DashboardScreen(
-                        viewModel = viewModel,
-                        onCategoryClick = { category ->
-                            viewModel.selectCategory(category)
-                            navController.navigate("browser")
-                        },
-                        onMenuClick = { }
-                    )
-                }
-                composable("browser") {
-                    FileBrowserContent(
-                        viewModel = viewModel,
-                        onFileClick = { file ->
-                            if (!file.isDirectory) {
-                                viewModel.addRecentFile(file)
-                                val encodedPath = URLEncoder.encode(file.path, StandardCharsets.UTF_8.toString())
-                                navController.navigate("viewer/$encodedPath")
-                            }
-                        }
-                    )
-                }
-                composable("recent") {
-                    val recentFiles by viewModel.recentFiles.collectAsState()
-                    SimpleFileList(
-                        files = recentFiles.map { FileItem(it.name, it.path, it.isDirectory, extension = File(it.path).extension) },
-                        onFileClick = { file ->
-                            val encodedPath = URLEncoder.encode(file.path, StandardCharsets.UTF_8.toString())
-                            navController.navigate("viewer/$encodedPath")
-                        },
-                        onDelete = { file -> viewModel.deleteFile(file) }
-                    )
-                }
-                composable("favorites") {
-                    val favorites by viewModel.favorites.collectAsState()
-                    SimpleFileList(
-                        files = favorites.map { FileItem(it.name, it.path, it.isDirectory, extension = File(it.path).extension, isFavorite = true) },
-                        onFileClick = { file ->
-                            val encodedPath = URLEncoder.encode(file.path, StandardCharsets.UTF_8.toString())
-                            navController.navigate("viewer/$encodedPath")
-                        },
-                        onDelete = { file -> viewModel.deleteFile(file) }
-                    )
-                }
-                composable("viewer/{filePath}") { backStackEntry ->
-                    val encodedPath = backStackEntry.arguments?.getString("filePath") ?: ""
-                    val path = URLDecoder.decode(encodedPath, StandardCharsets.UTF_8.toString())
-                    val file = File(path)
-                    FileViewerScreen(
-                        fileItem = FileItem(
-                            name = file.name,
-                            path = file.absolutePath,
-                            isDirectory = file.isDirectory,
-                            size = file.length(),
-                            extension = file.extension.lowercase()
-                        ),
-                        viewModel = viewModel,
-                        onBack = { navController.popBackStack() }
-                    )
-                }
-                composable("analyzer") {
-                    StorageAnalyzerScreen(onBack = { navController.popBackStack() })
-                }
-                composable("settings") {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("Settings Screen")
-                    }
-                }
-            }
+    }
+}
+
+@Composable
+fun PlaceholderScreen(name: String, icon: ImageVector) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(64.dp),
+                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "$name Screen",
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = "Coming Soon",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
@@ -278,46 +399,19 @@ fun FileBrowserContent(
     }
 }
 
-@Composable
-fun TabItem(navController: NavHostController, route: String, label: String, icon: ImageVector, currentRoute: String) {
-    LeadingIconTab(
-        selected = currentRoute == route,
-        onClick = { 
-            if (currentRoute != route) {
-                navController.navigate(route) {
-                    popUpTo("dashboard") { saveState = true }
-                    launchSingleTop = true
-                    restoreState = true
-                }
-            }
-        },
-        text = { Text(label, style = MaterialTheme.typography.labelMedium) },
-        icon = { Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp)) }
-    )
-}
-
-fun getTabIndex(route: String): Int {
-    return when (route) {
-        "dashboard" -> 0
-        "browser" -> 1
-        "recent" -> 2
-        "favorites" -> 3
-        "analyzer" -> 4
-        "settings" -> 5
-        else -> -1
-    }
-}
-
 fun getRouteTitle(route: String): String {
-    return when {
-        route == "dashboard" -> "Universal IDE"
-        route == "browser" -> "File Explorer"
-        route == "recent" -> "Recent Files"
-        route == "favorites" -> "Favorites"
-        route == "analyzer" -> "Analytics"
-        route == "settings" -> "Settings"
-        route.startsWith("viewer") -> "File Viewer"
-        else -> "Universal IDE"
+    return when (route) {
+        "dashboard" -> "Home"
+        "browser" -> "Explorer"
+        "recent" -> "Recent"
+        "favorites" -> "Favorites"
+        "wireless" -> "Wireless Sharing"
+        "devtools" -> "Developer Tools"
+        "cloud" -> "Cloud Storage"
+        "analyzer" -> "Analytics"
+        "settings" -> "Settings"
+        "about" -> "About"
+        else -> if (route.startsWith("viewer")) "File Viewer" else "Universal IDE"
     }
 }
 

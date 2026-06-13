@@ -18,7 +18,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -47,20 +46,32 @@ fun DashboardScreen(
             DashboardItem("Code Files", Icons.Default.Code, GradientCode, FileCategory.CODE),
             DashboardItem("Databases", Icons.Default.Storage, GradientDatabase, FileCategory.DATABASES),
             DashboardItem("Fonts", Icons.Default.FontDownload, GradientFont, FileCategory.FONTS),
+            DashboardItem("Spreadsheets", Icons.Default.TableChart, GradientImage, FileCategory.SPREADSHEETS),
+            DashboardItem("Presentations", Icons.Default.PresentToAll, GradientVideo, FileCategory.PRESENTATIONS),
             DashboardItem("Configuration", Icons.Default.Settings, GradientCode, FileCategory.CONFIGURATION),
             DashboardItem("Logs", Icons.Default.History, GradientCode, FileCategory.LOGS),
             DashboardItem("Android", Icons.Default.Android, GradientAndroid, FileCategory.ANDROID),
-            DashboardItem("Cloud Storage", Icons.Default.Cloud, GradientCloud, FileCategory.OTHER),
             DashboardItem("Web Files", Icons.Default.Language, GradientWeb, FileCategory.WEB),
-            DashboardItem("Spreadsheets", Icons.Default.TableChart, GradientImage, FileCategory.SPREADSHEETS),
-            DashboardItem("Presentations", Icons.Default.PresentToAll, GradientVideo, FileCategory.PRESENTATIONS),
-            DashboardItem("GIS & Maps", Icons.Default.Map, GradientAudio, FileCategory.GIS)
+            DashboardItem("GIS & Maps", Icons.Default.Map, GradientAudio, FileCategory.GIS),
+            DashboardItem("Backups", Icons.Default.Backup, GradientDoc, FileCategory.BACKUP),
+            DashboardItem("Cloud Storage", Icons.Default.Cloud, GradientCloud, FileCategory.OTHER),
+            DashboardItem("Emails", Icons.Default.Email, GradientArchive, FileCategory.EMAILS),
+            DashboardItem("Windows", Icons.Default.Window, GradientCloud, FileCategory.WINDOWS),
+            DashboardItem("Linux", Icons.Default.Terminal, GradientDatabase, FileCategory.LINUX),
+            DashboardItem("Other", Icons.Default.MoreHoriz, GradientCloud, FileCategory.OTHER)
         )
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        val screenWidth = maxWidth
+        val columns = when {
+            screenWidth < 600.dp -> 2
+            screenWidth < 900.dp -> 3
+            else -> 4
+        }
+
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 160.dp),
+            columns = GridCells.Fixed(columns),
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -88,30 +99,38 @@ fun CategoryCard(index: Int, item: DashboardItem, viewModel: FileViewModel, onCl
     
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        // Staggered animation
-        kotlinx.coroutines.delay(index * 50L)
+        kotlinx.coroutines.delay(index * 30L)
         visible = true
     }
 
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn(tween(400)) + scaleIn(tween(400), initialScale = 0.8f)
+        enter = fadeIn(tween(300)) + scaleIn(tween(300), initialScale = 0.9f)
     ) {
-        Card(
+        ElevatedCard(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(150.dp)
-                .shadow(8.dp, RoundedCornerShape(24.dp))
+                .height(130.dp)
                 .clip(RoundedCornerShape(24.dp))
                 .clickable { onClick(item.category) },
             shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+            colors = CardDefaults.elevatedCardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+            ),
+            elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Brush.linearGradient(item.gradient))
-                    .padding(20.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                item.gradient.first().copy(alpha = 0.8f),
+                                item.gradient.last().copy(alpha = 0.6f)
+                            )
+                        )
+                    )
+                    .padding(16.dp)
             ) {
                 Column(
                     modifier = Modifier.fillMaxSize(),
@@ -122,24 +141,24 @@ fun CategoryCard(index: Int, item: DashboardItem, viewModel: FileViewModel, onCl
                         imageVector = item.icon,
                         contentDescription = null,
                         tint = Color.White,
-                        modifier = Modifier.size(44.dp)
+                        modifier = Modifier.size(36.dp)
                     )
                     
                     Column {
                         Text(
                             text = item.title,
                             style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.ExtraBold,
+                                fontWeight = FontWeight.Bold,
                                 color = Color.White,
-                                fontSize = 18.sp,
-                                letterSpacing = 0.5.sp
-                            )
+                                fontSize = 16.sp
+                            ),
+                            maxLines = 1
                         )
                         Text(
                             text = if (count == 1) "1 file" else "$count files",
                             style = MaterialTheme.typography.bodySmall.copy(
-                                color = Color.White.copy(alpha = 0.85f),
-                                fontWeight = FontWeight.Medium
+                                color = Color.White.copy(alpha = 0.9f),
+                                fontWeight = FontWeight.Normal
                             )
                         )
                     }
