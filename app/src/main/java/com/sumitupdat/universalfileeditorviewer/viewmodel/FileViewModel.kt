@@ -1,0 +1,376 @@
+package com.sumitupdat.universalfileeditorviewer.viewmodel
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.sumitupdat.universalfileeditorviewer.data.local.*
+import com.sumitupdat.universalfileeditorviewer.data.model.*
+import com.sumitupdat.universalfileeditorviewer.domain.repository.*
+import com.sumitupdat.universalfileeditorviewer.data.repository.VaultRepository
+import android.net.Uri
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
+import java.io.File
+import javax.inject.Inject
+import dagger.hilt.android.lifecycle.HiltViewModel
+
+@HiltViewModel
+@OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
+class FileViewModel @Inject constructor(
+    private val repository: FileRepository,
+    private val archiveRepository: ArchiveRepository,
+    private val spreadsheetRepository: SpreadsheetRepository,
+    private val presentationRepository: PresentationRepository,
+    private val vaultRepository: VaultRepository,
+    private val preferencesRepository: PreferencesRepository
+) : ViewModel() {
+
+    private val userPreferences = preferencesRepository.userPreferences
+        .stateIn(viewModelScope, SharingStarted.Eagerly, UserPreferences())
+
+    private val _currentPath = MutableStateFlow("")
+    val currentPath: StateFlow<String> = _currentPath.asStateFlow()
+
+    // Viewer states
+    private val _spreadsheetData = MutableStateFlow<SpreadsheetData?>(null)
+    val spreadsheetData: StateFlow<SpreadsheetData?> = _spreadsheetData.asStateFlow()
+
+    private val _archiveEntries = MutableStateFlow<List<ArchiveEntry>>(emptyList())
+    val archiveEntries: StateFlow<List<ArchiveEntry>> = _archiveEntries.asStateFlow()
+
+    private val _presentationData = MutableStateFlow<PresentationData?>(null)
+    val presentationData: StateFlow<PresentationData?> = _presentationData.asStateFlow()
+
+    private val _viewerLoading = MutableStateFlow(false)
+    val viewerLoading: StateFlow<Boolean> = _viewerLoading.asStateFlow()
+
+    private val _viewerError = MutableStateFlow<String?>(null)
+    val viewerError: StateFlow<String?> = _viewerError.asStateFlow()
+
+    fun loadSpreadsheet(path: String) {
+        viewModelScope.launch {
+            _viewerLoading.value = true
+            _viewerError.value = null
+            try {
+                _spreadsheetData.value = spreadsheetRepository.readSpreadsheet(File(path))
+            } catch (e: Exception) {
+                _viewerError.value = "Failed to load spreadsheet: ${e.message}"
+            } finally {
+                _viewerLoading.value = false
+            }
+        }
+    }
+
+    fun loadArchive(path: String) {
+        viewModelScope.launch {
+            _viewerLoading.value = true
+            _viewerError.value = null
+            try {
+                _archiveEntries.value = archiveRepository.getArchiveEntries(File(path))
+            } catch (e: Exception) {
+                _viewerError.value = "Failed to load archive: ${e.message}"
+            } finally {
+                _viewerLoading.value = false
+            }
+        }
+    }
+
+    fun loadPresentation(path: String) {
+        viewModelScope.launch {
+            _viewerLoading.value = true
+            _viewerError.value = null
+            try {
+                _presentationData.value = presentationRepository.readPresentation(File(path))
+            } catch (e: Exception) {
+                _viewerError.value = "Failed to load presentation: ${e.message}"
+            } finally {
+                _viewerLoading.value = false
+            }
+        }
+    }
+
+    fun extractArchiveFile(archivePath: String, entryPath: String) {
+        viewModelScope.launch {
+            _viewerLoading.value = true
+            try {
+                val archiveFile = File(archivePath)
+                val targetDir = File(archiveFile.parent, "Extracted_${archiveFile.nameWithoutExtension}")
+                if (!targetDir.exists()) targetDir.mkdirs()
+                
+                val result = archiveRepository.extractFile(archiveFile, entryPath, targetDir)
+                if (result != null) {
+                    if (_currentPath.value == archiveFile.parent) loadFiles(_currentPath.value)
+                }
+            } catch (e: Exception) {
+                _viewerError.value = "Extraction failed: ${e.message}"
+            } finally {
+                _viewerLoading.value = false
+            }
+        }
+    }
+
+    fun extractAll(archivePath: String) {
+        viewModelScope.launch {
+            _viewerLoading.value = true
+            try {
+                val archiveFile = File(archivePath)
+                val targetDir = File(archiveFile.parent, "Extracted_${archiveFile.nameWithoutExtension}")
+                if (!targetDir.exists()) targetDir.mkdirs()
+                
+                val entries = archiveRepository.getArchiveEntries(archiveFile)
+                entries.forEach { entry ->
+                    if (!entry.isDirectory) {
+                        archiveRepository.extractFile(archiveFile, entry.path, targetDir)
+                    }
+                }
+                if (_currentPath.value == archiveFile.parent) loadFiles(_currentPath.value)
+            } catch (e: Exception) {
+                _viewerError.value = "Extraction failed: ${e.message}"
+            } finally {
+                _viewerLoading.value = false
+            }
+        }
+    }
+
+    private val _rawFiles = MutableStateFlow<List<FileItem>>(emptyList())
+    
+    private val _storageRoots = MutableStateFlow<List<FileItem>>(emptyList())
+    val storageRoots: StateFlow<List<FileItem>> = _storageRoots.asStateFlow()
+
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+
+    private val _selectedCategory = MutableStateFlow<FileCategory?>(null)
+    val selectedCategory: StateFlow<FileCategory?> = _selectedCategory.asStateFlow()
+
+    val favorites: StateFlow<List<FavoriteFile>> = repository.getFavorites()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val recentFiles: StateFlow<List<RecentFile>> = repository.getRecentFiles()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Category counts for Dashboard
+    val categoryCounts = FileCategory.entries.associateWith { category ->
+        repository.getCountByCategory(category).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    }
+
+    private val _isScanning = MutableStateFlow(false)
+    val isScanning: StateFlow<Boolean> = _isScanning.asStateFlow()
+
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    // Main source of files for the UI
+    val files: StateFlow<List<FileItem>> = combine(
+        _currentPath,
+        _selectedCategory,
+        _searchQuery,
+        _rawFiles,
+        favorites
+    ) { path, category, query, rawFiles, favs ->
+        rawFiles.map { it.copy(isFavorite = favs.any { f -> f.path == it.path }) }
+    }.combine(userPreferences) { fileList, prefs ->
+        fileList.map { file ->
+            val nameWithPossibleExt = if (prefs.showFileExtensions || file.isDirectory) {
+                file.name
+            } else {
+                file.name.substringBeforeLast(".", file.name)
+            }
+            file.copy(name = nameWithPossibleExt)
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Global Search results from index
+    val globalSearchResults: StateFlow<List<FileItem>> = _searchQuery
+        .debounce(300)
+        .filter { it.length >= 2 }
+        .flatMapLatest { query -> repository.searchIndexedFiles(query) }
+        .combine(userPreferences) { results, prefs ->
+            results.map { file ->
+                val nameWithPossibleExt = if (prefs.showFileExtensions || file.isDirectory) {
+                    file.name
+                } else {
+                    file.name.substringBeforeLast(".", file.name)
+                }
+                file.copy(name = nameWithPossibleExt)
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    init {
+        refresh()
+        startIndexing()
+    }
+
+    fun refresh() {
+        loadStorageRoots()
+    }
+
+    fun startIndexing() {
+        viewModelScope.launch {
+            _isScanning.value = true
+            repository.startFullScan()
+            _isScanning.value = false
+        }
+    }
+
+    fun selectCategory(category: FileCategory) {
+        _selectedCategory.value = category
+        _currentPath.value = ""
+        _searchQuery.value = ""
+        
+        viewModelScope.launch {
+            _isLoading.value = true
+            when (category) {
+                FileCategory.FAVORITES -> {
+                    repository.getFavorites().collectLatest { favList ->
+                        _rawFiles.value = favList.map { it.toFileItem() }
+                        _isLoading.value = false
+                    }
+                }
+                FileCategory.RECENT -> {
+                    repository.getRecentFiles().collectLatest { recentList ->
+                        _rawFiles.value = recentList.map { it.toFileItem() }
+                        _isLoading.value = false
+                    }
+                }
+                FileCategory.SEARCH -> {
+                    // Search all handled by the SearchBar and globalSearchResults flow
+                    _rawFiles.value = emptyList()
+                    _isLoading.value = false
+                }
+                else -> {
+                    repository.getFilesByCategory(category).collectLatest { categoryFiles ->
+                        _rawFiles.value = categoryFiles
+                        _isLoading.value = false
+                    }
+                }
+            }
+        }
+    }
+
+    private fun FavoriteFile.toFileItem(): FileItem = FileItem(
+        name = name,
+        path = path,
+        isDirectory = isDirectory,
+        extension = File(path).extension,
+        category = getCategoryFromExtension(File(path).extension, isDirectory),
+        isFavorite = true
+    )
+
+    private fun RecentFile.toFileItem(): FileItem = FileItem(
+        name = name,
+        path = path,
+        isDirectory = isDirectory,
+        extension = File(path).extension,
+        category = getCategoryFromExtension(File(path).extension, isDirectory)
+    )
+
+    fun loadStorageRoots() {
+        val roots = repository.getStorageRoots().map { it.toFileItem() }
+        _storageRoots.value = roots
+        if (_currentPath.value.isEmpty() && roots.isNotEmpty() && _selectedCategory.value == null) {
+            loadFiles(roots[0].path)
+        } else if (_currentPath.value.isNotEmpty()) {
+            loadFiles(_currentPath.value)
+        }
+    }
+
+    fun loadFiles(path: String) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            _currentPath.value = path
+            _selectedCategory.value = null
+            _searchQuery.value = ""
+            val prefs = userPreferences.value
+            val result = repository.getFiles(
+                directoryPath = path,
+                showHidden = prefs.showHiddenFiles,
+                sortOrder = prefs.fileSorting
+            )
+            _rawFiles.value = result
+            _isLoading.value = false
+        }
+    }
+
+    fun navigateUp(): Boolean {
+        if (_selectedCategory.value != null) {
+            _selectedCategory.value = null
+            loadStorageRoots()
+            return true
+        }
+        
+        if (_currentPath.value.isEmpty()) return false
+        val currentFile = File(_currentPath.value)
+        val parent = currentFile.parentFile
+        val isRoot = _storageRoots.value.any { it.path == _currentPath.value }
+        if (isRoot) return false
+        return if (parent != null && parent.exists()) {
+            loadFiles(parent.absolutePath)
+            true
+        } else false
+    }
+
+    fun deleteFile(fileItem: FileItem) {
+        viewModelScope.launch {
+            if (repository.deleteFile(fileItem.path)) {
+                if (_selectedCategory.value == null) loadFiles(_currentPath.value)
+            }
+        }
+    }
+
+    fun toggleFavorite(fileItem: FileItem) {
+        viewModelScope.launch { repository.toggleFavorite(fileItem) }
+    }
+
+    fun createFolder(name: String) {
+        if (_currentPath.value.isNotEmpty()) {
+            viewModelScope.launch {
+                if (repository.createFolder(_currentPath.value, name)) loadFiles(_currentPath.value)
+            }
+        }
+    }
+
+    fun createFile(name: String) {
+        if (_currentPath.value.isNotEmpty()) {
+            viewModelScope.launch {
+                if (repository.createFile(_currentPath.value, name)) loadFiles(_currentPath.value)
+            }
+        }
+    }
+
+    fun renameFile(fileItem: FileItem, newName: String) {
+        viewModelScope.launch {
+            if (repository.renameFile(fileItem.path, newName)) {
+                if (_selectedCategory.value == null) loadFiles(_currentPath.value)
+            }
+        }
+    }
+
+    fun addRecentFile(fileItem: FileItem) {
+        viewModelScope.launch { repository.addRecentFile(fileItem) }
+    }
+
+    fun onSearchQueryChange(query: String) {
+        _searchQuery.value = query
+        if (query.isNotEmpty()) {
+            _selectedCategory.value = null
+            _currentPath.value = ""
+        }
+    }
+
+    fun moveFileToVault(fileItem: FileItem) {
+        viewModelScope.launch {
+            vaultRepository.moveToVault(
+                uri = Uri.fromFile(File(fileItem.path)),
+                originalName = fileItem.name,
+                category = fileItem.category.name,
+                fileSize = fileItem.size
+            )
+            // Optionally delete original file
+            repository.deleteFile(fileItem.path)
+            if (_selectedCategory.value == null) loadFiles(_currentPath.value)
+        }
+    }
+}
