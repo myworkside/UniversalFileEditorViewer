@@ -1,86 +1,24 @@
 # 📂 Universal File Editor & Viewer
 
-**Universal File Editor & Viewer** is a modern Android file management application designed to browse, open, view, edit, organize, and share a wide variety of file formats from a single, user-friendly interface.
+**One App. All Files. Anywhere.**
 
-Instead of installing separate applications for documents, images, videos, archives, source code, databases, and configuration files, Universal File Editor & Viewer brings everything together in one powerful app.
+Universal File Editor & Viewer is a modern Android file management application designed to browse, view, edit, organize, protect, and share a wide variety of file formats from a single user-friendly interface.
 
-The project is built with **Kotlin**, **Jetpack Compose**, and **MVVM Architecture**, providing a fast, modern, and scalable experience across Android devices.
-
----
-
-# 🚀 Key Highlights
-
-* 📁 Complete File Manager
-* 📝 Built-in Text & Code Editor
-* 📄 Document Viewer
-* 🖼 Image Viewer
-* 🎵 Audio Player
-* 🎬 Video Player
-* 📦 Archive Browser
-* 🗄 Database Viewer
-* 🤖 APK Analyzer
-* 🔍 Advanced Search
-* ⭐ Favorites
-* 🕒 Recent Files
-* 📤 File Sharing
-* 📋 Copy / Move / Rename
-* 🗑 Delete Files
-* 🌙 Dark Mode Support
-* 📱 Android 10–16 Compatible
-* ⚡ Material Design 3 UI
+Built with **Kotlin**, **Jetpack Compose**, and **Material Design 3**, the project delivers a fast, secure, and modern experience across Android devices.
 
 ---
 
-# 🎯 Project Goals
+## 🚀 Features
 
-The primary goal of this project is to create an all-in-one file management solution capable of handling the most commonly used file types on Android devices.
+### 📁 File Management
 
-This application aims to:
+* Browse Internal Storage & SD Card
+* Copy, Move, Rename, Delete
+* Favorites & Recent Files
+* Advanced Search
+* File Sorting & Filtering
 
-* Reduce dependency on multiple apps.
-* Improve productivity.
-* Simplify file organization.
-* Provide a consistent user experience.
-* Offer developers an open-source file management platform.
-
----
-
-# 📥 Download
-
-APK Download:
-LATEST V3.05  https://drive.google.com/file/d/1bTuXcRb5qwje8K8tcMy7p2E3DvaWMdbI/view?usp=drive_link
-
-LATEST V3.0  https://drive.google.com/file/d/1z0wwSSuUPOVdBlbk8R88fQgj2So_ftgf/view?usp=drive_link
-
----
-
-# 🐞 Bug Reports & Feedback
-
-Found a bug?
-
-Please include:
-
-* Device Model
-* Android Version
-* Screenshot
-* Screen Recording
-* File Type
-* Error Message
-
-Feature requests and bug reports are welcome.
-
-### Instagram Support
-https://www.instagram.com/sumitupdat
-
-For updates, support, bug reports, and feature requests:
-
-DM on Instagram.
-
----
-
-# ✨ Supported File Types
-
-## 📄 Documents
+### 📄 Document Support
 
 * TXT
 * PDF
@@ -90,37 +28,14 @@ DM on Instagram.
 * RTF
 * ODT
 
-## 🖼 Images
+### 🖼 Media Support
 
-* JPG
-* PNG
-* GIF
-* BMP
-* WEBP
-* HEIC
-* SVG
-* TIFF
+* Image Viewer
+* Audio Player
+* Video Player
+* Thumbnail Generation
 
-## 🎵 Audio
-
-* MP3
-* WAV
-* AAC
-* FLAC
-* OGG
-* M4A
-
-## 🎬 Videos
-
-* MP4
-* MKV
-* AVI
-* MOV
-* WEBM
-* FLV
-* 3GP
-
-## 📦 Archives
+### 📦 Archive Support
 
 * ZIP
 * RAR
@@ -129,132 +44,116 @@ DM on Instagram.
 * GZ
 * ISO
 
-## 💻 Programming Files
+### 💻 Code & Developer Files
 
 * Java
 * Kotlin
 * Python
-* C
-* C++
+* C / C++
 * HTML
 * CSS
 * JavaScript
-* PHP
 * JSON
 * XML
 * YAML
 
-## 🗄 Databases
+### 🔐 Private Encrypted Vault
 
-* SQLite
-* DB
-* MDB
-* SQL
-* ACCDB
+* PIN Protected Vault
+* AES-256 Encryption
+* Secure File Storage
+* Auto Lock Protection
+* Secure Delete
+* Audit Logs
+* Offline Security
 
-## 🔤 Fonts
+### 📡 Wireless Sharing
 
-* TTF
-* OTF
-* WOFF
-* WOFF2
+* Send Files
+* Receive Files
+* Background Transfers
+* Device Discovery
 
-## ⚙ Configuration Files
+### ⚙️ Developer Tools
 
-* INI
-* CFG
-* CONF
-* JSON
-* XML
-* YAML
+* Storage Analyzer
+* APK Analyzer
+* Database Viewer
+* File Information Inspector
 
-## 📋 Logs
+### 🎨 Modern UI
 
-* LOG
-* EVT
-* TRACE
-
-## 💾 Backup Files
-
-* BAK
-* OLD
-* TMP
-
-## 🤖 Android Files
-
-* APK
-* AAB
-* DEX
-* OBB
-
-## 🐧 Linux Scripts
-
-* SH
-* BASH
-* RUN
-
-## 🪟 Windows Scripts
-
-* BAT
-* CMD
-* PS1
-* VBS
+* Material Design 3
+* Dynamic Colors
+* Dark Mode
+* AMOLED Mode
+* Font Scaling
+* UI Density Controls
 
 ---
 
-# 🛠 Technology Stack
-
-### Language
+## 🛠 Technology Stack
 
 * Kotlin
-
-### UI Framework
-
 * Jetpack Compose
 * Material Design 3
-
-### Architecture
-
-* MVVM
-
-### Android Components
-
-* ViewModel
-* StateFlow
-* Navigation Compose
+* MVVM Architecture
 * Coroutines
+* StateFlow
 * Room Database
-
-### Storage APIs
-
-* Storage Access Framework (SAF)
-* MediaStore
-* FileProvider
+* Hilt Dependency Injection
+* Android DataStore
+* Android Keystore
+* Media3
 
 ---
 
-# 📈 Future Roadmap
+## 📱 Requirements
+
+* Android 8.0 (API 26) or Higher
+* Android 16 Ready
+* Material You Support
+
+---
+
+## 🔗 Links
+
+### GitHub Repository
+
+https://github.com/myworkside/UniversalFileEditorViewer
+
+### Instagram
+
+https://www.instagram.com/sumitupdat
+
+---
+
+## 👨‍💻 Developer
+
+**Sumit Mondal**
+
+Open-source Android developer focused on file management, productivity tools, security solutions, and modern Android applications.
+
+---
+
+## 📈 Roadmap
 
 * Google Drive Integration
 * OneDrive Integration
-* Dropbox Integration
-* FTP/SFTP Support
+* Dropbox Support
+* FTP / SFTP Support
 * SMB Network Storage
-* Root Explorer
 * AI File Assistant
 * Advanced Code Editor
 * PDF Annotation
-* File Encryption
-* Secure Vault
-* Built-in Media Streaming
-* Multi-Window File Explorer
-* Tablet Optimizations
+* Multi-Window Explorer
+* Tablet Optimization
 
 ---
 
-# 🤝 Contributing
+## 🤝 Contributing
 
-Contributions are welcome.
+Contributions, feature requests, and bug reports are welcome.
 
 1. Fork the repository
 2. Create a feature branch
@@ -264,22 +163,12 @@ Contributions are welcome.
 
 ---
 
-# 📜 License
+## 📜 License
 
 MIT License
 
-You are free to use, modify, distribute, and contribute to this project.
+Free to use, modify, and distribute.
 
 ---
 
-# 👨‍💻 Author
-
-**Sumit Mondal**
-
-GitHub:
-https://github.com/myworkside
-
-Project:
-**Universal File Editor & Viewer**
-
-### One App. All Files. Anywhere.
+### ❤️ Made with Kotlin by Sumit Mondal
