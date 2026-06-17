@@ -18,6 +18,9 @@ interface FileDao {
     @Query("SELECT EXISTS(SELECT 1 FROM favorites WHERE path = :path)")
     suspend fun isFavorite(path: String): Boolean
 
+    @Query("DELETE FROM favorites WHERE path = :path")
+    suspend fun removeFavoriteByPath(path: String)
+
     @Query("SELECT * FROM recent_files ORDER BY openedAt DESC LIMIT 50")
     fun getRecentFiles(): Flow<List<RecentFile>>
 

@@ -1,14 +1,18 @@
 package com.sumitupdat.universalfileeditorviewer.ui.screens.vault
 
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
@@ -18,8 +22,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -36,12 +41,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import coil.compose.rememberAsyncImagePainter
+import kotlinx.coroutines.withContext
 import com.sumitupdat.universalfileeditorviewer.data.local.VaultAuditLog
 import com.sumitupdat.universalfileeditorviewer.data.local.VaultFileEntity
 import com.sumitupdat.universalfileeditorviewer.viewmodel.VaultViewModel
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.log10
@@ -53,7 +62,6 @@ fun PrivateVaultScreen(
     onBack: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel()
 ) {
-    val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
     val lifecycleOwner = LocalLifecycleOwner.current
     val snackbarHostState = remember { SnackbarHostState() }
@@ -75,10 +83,15 @@ fun PrivateVaultScreen(
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) viewModel.lockVault()
+            if (event == Lifecycle.Event.ON_STOP) {
+                viewModel.lockVault()
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        onDispose { 
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            viewModel.lockVault() // Lock whenever the screen is left
+        }
     }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -91,42 +104,44 @@ fun PrivateVaultScreen(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            LargeTopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        AnimatedContent(targetState = uiState.isLocked, label = "LockIcon") { locked ->
-                            Icon(
-                                if (locked) Icons.Default.Lock else Icons.Default.LockOpen,
-                                contentDescription = null,
-                                tint = if (locked) MaterialTheme.colorScheme.error else Color(0xFF4CAF50)
-                            )
+            if (uiState.viewingFile == null) {
+                LargeTopAppBar(
+                    title = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            AnimatedContent(targetState = uiState.isLocked, label = "LockIcon") { locked ->
+                                Icon(
+                                    if (locked) Icons.Default.Lock else Icons.Default.LockOpen,
+                                    contentDescription = null,
+                                    tint = if (locked) MaterialTheme.colorScheme.error else Color(0xFF4CAF50)
+                                )
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Text(if (showTrash) "Vault Trash" else "Private Vault", fontWeight = FontWeight.SemiBold)
                         }
-                        Spacer(Modifier.width(12.dp))
-                        Text(if (showTrash) "Vault Trash" else "Private Vault", fontWeight = FontWeight.SemiBold)
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = { if (showTrash) showTrash = false else onBack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    if (!uiState.isLocked) {
-                        if (!showTrash) {
-                            IconButton(onClick = { showTrash = true }) {
-                                Icon(Icons.Default.DeleteSweep, contentDescription = "Trash")
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { if (showTrash) showTrash = false else onBack() }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                    actions = {
+                        if (!uiState.isLocked) {
+                            if (!showTrash) {
+                                IconButton(onClick = { showTrash = true }) {
+                                    Icon(Icons.Default.DeleteSweep, contentDescription = "Trash")
+                                }
+                            }
+                            IconButton(onClick = { viewModel.lockVault() }) {
+                                Icon(Icons.Default.Logout, contentDescription = "Lock")
                             }
                         }
-                        IconButton(onClick = { viewModel.lockVault() }) {
-                            Icon(Icons.Default.Logout, contentDescription = "Lock")
-                        }
-                    }
-                },
-                scrollBehavior = scrollBehavior
-            )
+                    },
+                    scrollBehavior = scrollBehavior
+                )
+            }
         },
         floatingActionButton = {
-            if (!uiState.isLocked) {
+            if (!uiState.isLocked && uiState.viewingFile == null) {
                 FloatingActionButton(
                     onClick = { filePickerLauncher.launch("*/*") },
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -137,7 +152,7 @@ fun PrivateVaultScreen(
             }
         }
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+        Box(modifier = Modifier.fillMaxSize().padding(if (uiState.viewingFile == null) padding else PaddingValues(0.dp))) {
             AnimatedContent(targetState = uiState.isLocked, label = "VaultContent") { locked ->
                 if (locked) {
                     if (!uiState.isPinSet) {
@@ -151,11 +166,191 @@ fun PrivateVaultScreen(
                     }
                 } else {
                     if (showTrash) VaultTrashContent(uiState, viewModel)
-                    else VaultDashboardContent(uiState, viewModel)
+                    else VaultDashboardContent(uiState, viewModel, onOpenFile = { viewModel.openVaultFile(it) })
                 }
             }
+
+            // Internal Viewer Overlay
+            if (uiState.viewingFile != null) {
+                VaultInternalViewer(
+                    file = uiState.viewingFile!!,
+                    mimeType = uiState.viewingMimeType ?: "*/*",
+                    onClose = { viewModel.closeViewer() }
+                )
+            }
+
             if (uiState.isLoading) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter))
+            }
+        }
+    }
+}
+
+@Composable
+fun VaultInternalViewer(file: File, mimeType: String, onClose: () -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Viewer Header
+            Row(
+                modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onClose) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Close")
+                }
+                Text(
+                    text = file.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            // Content based on MimeType
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                when {
+                    mimeType.startsWith("image/") -> {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Image(
+                                painter = rememberAsyncImagePainter(
+                                    model = coil.request.ImageRequest.Builder(LocalContext.current)
+                                        .data(file)
+                                        .build()
+                                ),
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                            )
+                        }
+                    }
+                    mimeType.startsWith("video/") || mimeType.startsWith("audio/") -> {
+                        ExoPlayerViewer(file)
+                    }
+                    mimeType.startsWith("text/") || 
+                    mimeType == "application/json" || 
+                    mimeType == "application/xml" ||
+                    mimeType == "application/javascript" -> {
+                        TextViewer(file)
+                    }
+                    mimeType == "application/pdf" -> {
+                        PdfViewer(file)
+                    }
+                    else -> {
+                        // For generic documents or unknown binary, show warning or try text
+                        Column(
+                            modifier = Modifier.fillMaxSize().padding(32.dp),
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(Icons.Default.Warning, null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.outline)
+                            Spacer(Modifier.height(16.dp))
+                            Text("No internal viewer available for this file type.", textAlign = TextAlign.Center)
+                            Text("Type: $mimeType", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ExoPlayerViewer(file: File) {
+    val context = LocalContext.current
+    val exoPlayer = remember {
+        androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
+            setMediaItem(androidx.media3.common.MediaItem.fromUri(Uri.fromFile(file)))
+            prepare()
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { exoPlayer.release() }
+    }
+
+    AndroidView(
+        factory = {
+            androidx.media3.ui.PlayerView(context).apply {
+                player = exoPlayer
+                useController = true
+                layoutParams = android.view.ViewGroup.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            }
+        },
+        modifier = Modifier.fillMaxSize()
+    )
+}
+
+@Composable
+fun TextViewer(file: File) {
+    val text = remember(file) { try { file.readText() } catch (e: Exception) { "Error reading file" } }
+    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+        )
+    }
+}
+
+@Composable
+fun PdfViewer(file: File) {
+    val context = LocalContext.current
+    var pageCount by remember { mutableIntStateOf(0) }
+    var currentPage by remember { mutableIntStateOf(0) }
+    var bitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+
+    LaunchedEffect(file, currentPage) {
+        withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val parcelFileDescriptor = android.os.ParcelFileDescriptor.open(file, android.os.ParcelFileDescriptor.MODE_READ_ONLY)
+                val pdfRenderer = android.graphics.pdf.PdfRenderer(parcelFileDescriptor)
+                pageCount = pdfRenderer.pageCount
+                if (currentPage < pageCount) {
+                    val page = pdfRenderer.openPage(currentPage)
+                    val b = android.graphics.Bitmap.createBitmap(page.width * 2, page.height * 2, android.graphics.Bitmap.Config.ARGB_8888)
+                    page.render(b, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                    bitmap = b
+                    page.close()
+                }
+                pdfRenderer.close()
+                parcelFileDescriptor.close()
+            } catch (e: Exception) {
+                // Error handling
+            }
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            bitmap?.let {
+                Image(
+                    painter = coil.compose.rememberAsyncImagePainter(it),
+                    contentDescription = "PDF Page ${currentPage + 1}",
+                    modifier = Modifier.fillMaxSize().padding(16.dp),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                )
+            } ?: CircularProgressIndicator()
+        }
+        
+        if (pageCount > 1) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Button(onClick = { if (currentPage > 0) currentPage-- }, enabled = currentPage > 0) {
+                    Text("Previous")
+                }
+                Text("Page ${currentPage + 1} of $pageCount")
+                Button(onClick = { if (currentPage < pageCount - 1) currentPage++ }, enabled = currentPage < pageCount - 1) {
+                    Text("Next")
+                }
             }
         }
     }
@@ -342,58 +537,103 @@ fun KeypadButton(text: String, onClick: () -> Unit, isAction: Boolean = false) {
 }
 
 @Composable
-fun VaultDashboardContent(uiState: com.sumitupdat.universalfileeditorviewer.viewmodel.VaultUiState, viewModel: com.sumitupdat.universalfileeditorviewer.viewmodel.VaultViewModel) {
+fun VaultDashboardContent(
+    uiState: com.sumitupdat.universalfileeditorviewer.viewmodel.VaultUiState,
+    viewModel: com.sumitupdat.universalfileeditorviewer.viewmodel.VaultViewModel,
+    onOpenFile: (Long) -> Unit
+) {
     val context = LocalContext.current
+    var selectedCategory by remember { mutableStateOf<String?>(null) }
     
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        item { VaultStatsCard(uiState) }
+    val filteredFiles = remember(uiState.vaultFiles, selectedCategory) {
+        if (selectedCategory == null) uiState.vaultFiles
+        else uiState.vaultFiles.filter { it.category == selectedCategory }
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        // 1. Header Stats
+        VaultStatsCard(uiState)
         
-        item {
-            OutlinedTextField(
-                value = uiState.searchQuery,
-                onValueChange = { viewModel.setSearchQuery(it) },
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Search files...") },
-                leadingIcon = { Icon(Icons.Default.Search, null) },
-                shape = RoundedCornerShape(16.dp)
-            )
+        // 2. Category Tabs
+        ScrollableTabRow(
+            selectedTabIndex = when(selectedCategory) {
+                "Images" -> 1
+                "Videos" -> 2
+                "Documents" -> 3
+                "Audio" -> 4
+                else -> 0
+            },
+            edgePadding = 16.dp,
+            containerColor = Color.Transparent,
+            divider = {}
+        ) {
+            Tab(selected = selectedCategory == null, onClick = { selectedCategory = null }) {
+                Text("All", modifier = Modifier.padding(16.dp))
+            }
+            Tab(selected = selectedCategory == "Images", onClick = { selectedCategory = "Images" }) {
+                Text("Photos", modifier = Modifier.padding(16.dp))
+            }
+            Tab(selected = selectedCategory == "Videos", onClick = { selectedCategory = "Videos" }) {
+                Text("Videos", modifier = Modifier.padding(16.dp))
+            }
+            Tab(selected = selectedCategory == "Documents", onClick = { selectedCategory = "Documents" }) {
+                Text("Documents", modifier = Modifier.padding(16.dp))
+            }
+            Tab(selected = selectedCategory == "Audio", onClick = { selectedCategory = "Audio" }) {
+                Text("Audio", modifier = Modifier.padding(16.dp))
+            }
         }
 
-        item { SectionHeader("Encrypted Categories", Icons.Default.Category) }
-        item {
+        // 3. Grid/List Content
+        if (filteredFiles.isEmpty()) {
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                EmptyVaultState()
+            }
+        } else if (selectedCategory == "Images") {
+            // Gallery View
             LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                modifier = Modifier.height(260.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                userScrollEnabled = false
+                columns = GridCells.Fixed(3),
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                items(vaultCategories) { category ->
-                    VaultCategoryCard(category, uiState.categoryCounts[category.name] ?: 0)
+                items(filteredFiles, key = { it.id }) { file ->
+                    GalleryItem(file, onClick = { onOpenFile(file.id) })
+                }
+            }
+        } else {
+            // List View
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(filteredFiles, key = { it.id }) { file ->
+                    VaultFileRow(
+                        file = file,
+                        onClick = { onOpenFile(file.id) },
+                        onRestore = { viewModel.restoreFile(file.id, context.getExternalFilesDir(null) ?: context.filesDir) },
+                        onTrash = { viewModel.moveToTrash(file.id) },
+                        onDelete = { viewModel.deletePermanently(file.id) }
+                    )
                 }
             }
         }
+    }
+}
 
-        item { SectionHeader("Recent Activity", Icons.Default.History) }
-        items(uiState.auditLogs.take(3)) { log ->
-            AuditLogRow(log)
-        }
-
-        item { SectionHeader("Stored Files", Icons.Default.Description) }
-        if (uiState.vaultFiles.isEmpty()) {
-            item { EmptyVaultState() }
-        } else {
-            items(uiState.vaultFiles, key = { it.id }) { file ->
-                VaultFileRow(
-                    file = file,
-                    onRestore = { viewModel.restoreFile(file.id, context.getExternalFilesDir(null) ?: context.filesDir) },
-                    onTrash = { viewModel.moveToTrash(file.id) }
-                )
-            }
+@Composable
+fun GalleryItem(file: VaultFileEntity, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .aspectRatio(1f)
+            .clickable { onClick() },
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant)) {
+            val icon = if (file.category == "Videos") Icons.Default.Movie else Icons.Default.Image
+            Icon(icon, null, tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
         }
     }
 }
@@ -463,26 +703,50 @@ fun VaultCategoryCard(category: VaultCategory, count: Int) {
 }
 
 @Composable
-fun VaultFileRow(file: VaultFileEntity, onRestore: () -> Unit, onTrash: () -> Unit) {
+fun VaultFileRow(file: VaultFileEntity, onClick: () -> Unit, onRestore: () -> Unit, onTrash: () -> Unit, onDelete: () -> Unit) {
     var showMenu by remember { mutableStateOf(false) }
     ListItem(
         headlineContent = { Text(file.originalName, maxLines = 1) },
         supportingContent = { Text(formatSize(file.fileSize)) },
         leadingContent = {
+            val icon = when {
+                file.category == "Images" -> Icons.Default.Image
+                file.category == "Videos" -> Icons.Default.Movie
+                file.category == "Audio" -> Icons.Default.Audiotrack
+                else -> Icons.Default.Description
+            }
             Surface(modifier = Modifier.size(40.dp), shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)) {
-                Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.Security, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp)) }
+                Box(contentAlignment = Alignment.Center) { Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp)) }
             }
         },
         trailingContent = {
             Box {
                 IconButton(onClick = { showMenu = true }) { Icon(Icons.Default.MoreVert, null) }
                 DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                    DropdownMenuItem(text = { Text("Restore") }, onClick = { onRestore(); showMenu = false }, leadingIcon = { Icon(Icons.Default.Restore, null) })
-                    DropdownMenuItem(text = { Text("Move to Trash") }, onClick = { onTrash(); showMenu = false }, leadingIcon = { Icon(Icons.Default.Delete, null) })
+                    DropdownMenuItem(
+                        text = { Text("View") },
+                        onClick = { onClick(); showMenu = false },
+                        leadingIcon = { Icon(Icons.AutoMirrored.Filled.OpenInNew, null) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Restore") },
+                        onClick = { onRestore(); showMenu = false },
+                        leadingIcon = { Icon(Icons.Default.Restore, null) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Move to Trash") },
+                        onClick = { onTrash(); showMenu = false },
+                        leadingIcon = { Icon(Icons.Default.DeleteOutline, null) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Delete Permanently") },
+                        onClick = { onDelete(); showMenu = false },
+                        leadingIcon = { Icon(Icons.Default.DeleteForever, null, tint = MaterialTheme.colorScheme.error) }
+                    )
                 }
             }
         },
-        modifier = Modifier.clip(RoundedCornerShape(12.dp))
+        modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable { onClick() }
     )
 }
 

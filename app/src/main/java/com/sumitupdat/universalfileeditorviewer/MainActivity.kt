@@ -15,8 +15,12 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
@@ -25,6 +29,7 @@ import com.sumitupdat.universalfileeditorviewer.ui.screens.MainScreen
 import com.sumitupdat.universalfileeditorviewer.ui.theme.UniversalFileEditorViewerTheme
 import com.sumitupdat.universalfileeditorviewer.viewmodel.FileViewModel
 import com.sumitupdat.universalfileeditorviewer.viewmodel.SettingsViewModel
+import com.sumitupdat.universalfileeditorviewer.viewmodel.VaultViewModel
 import dagger.hilt.android.AndroidEntryPoint
 
 private const val TAG = "MainActivity"
@@ -33,6 +38,7 @@ private const val TAG = "MainActivity"
 class MainActivity : ComponentActivity() {
     private val fileViewModel: FileViewModel by viewModels()
     private val settingsViewModel: SettingsViewModel by viewModels()
+    private val vaultViewModel: VaultViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -44,15 +50,31 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val settingsState by settingsViewModel.uiState.collectAsStateWithLifecycle()
+            val vaultState by vaultViewModel.uiState.collectAsStateWithLifecycle()
             val prefs = settingsState.preferences
+            val lifecycleOwner = LocalLifecycleOwner.current
             
+            // Global Auto-Lock: Lock vault when app goes to background
+            DisposableEffect(lifecycleOwner) {
+                val observer = LifecycleEventObserver { _, event ->
+                    if (event == Lifecycle.Event.ON_STOP) {
+                        Log.d(TAG, "ON_STOP detected - Auto-locking vault")
+                        vaultViewModel.lockVault()
+                    }
+                }
+                lifecycleOwner.lifecycle.addObserver(observer)
+                onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+            }
+
             val navController = rememberNavController()
             val navBackStackEntry by navController.currentBackStackEntryAsState()
             val currentRoute = navBackStackEntry?.destination?.route ?: "dashboard"
 
-            // Security: Disable screenshots/recording and hide from recents in Vault
-            LaunchedEffect(currentRoute) {
-                if (currentRoute == "vault") {
+            // Security: Disable screenshots/recording and hide from recents in Vault when unlocked
+            LaunchedEffect(currentRoute, vaultState.isLocked) {
+                val isVaultOpenAndUnlocked = currentRoute == "vault" && !vaultState.isLocked
+                if (isVaultOpenAndUnlocked) {
+                    Log.d(TAG, "Vault active and unlocked - Applying FLAG_SECURE")
                     window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
                 } else {
                     window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)

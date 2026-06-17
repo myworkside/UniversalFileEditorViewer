@@ -3,6 +3,8 @@ package com.sumitupdat.universalfileeditorviewer.data.repository
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.util.Log
+import com.sumitupdat.universalfileeditorviewer.data.local.FileDao
 import com.sumitupdat.universalfileeditorviewer.data.local.VaultAuditLog
 import com.sumitupdat.universalfileeditorviewer.data.local.VaultFileDao
 import com.sumitupdat.universalfileeditorviewer.data.local.VaultFileEntity
@@ -24,6 +26,7 @@ import javax.inject.Singleton
 @Singleton
 class VaultRepository @Inject constructor(
     private val vaultDao: VaultFileDao,
+    private val fileDao: FileDao,
     @ApplicationContext private val context: Context
 ) {
     private val vaultDir = File(context.filesDir, "Vault").apply { if (!exists()) mkdirs() }
@@ -45,6 +48,13 @@ class VaultRepository @Inject constructor(
         val name = originalName ?: infoName
         val size = fileSize ?: infoSize
         
+        // Remove from global Recents/Favorites if it exists
+        if (uri.scheme == "file") {
+            val path = uri.path ?: ""
+            fileDao.removeRecentFile(path)
+            fileDao.removeFavoriteByPath(path)
+        }
+
         // Calculate SHA-256 for original file
         val originalChecksum = context.contentResolver.openInputStream(uri)?.use { 
             HashUtils.calculateSha256(it)
@@ -126,16 +136,44 @@ class VaultRepository @Inject constructor(
         logAction("DELETE", "Permanently deleted ${entity.originalName}")
     }
 
-    suspend fun exportBackup(targetUri: Uri) = withContext(Dispatchers.IO) {
-        // Implementation for creating an encrypted backup package
-        // This would involve ZIP-ing the Vault directory and encrypting the metadata
+    suspend fun decryptToCache(id: Long): Result<File> = withContext(Dispatchers.IO) {
+        Log.d("VAULT_REPO", "Decrypting file ID: $id to cache")
+        val entity = vaultDao.getVaultFileById(id) ?: return@withContext Result.failure(Exception("File not found"))
+        val encryptedFile = File(entity.encryptedPath)
+        
+        if (!encryptedFile.exists()) {
+            Log.e("VAULT_REPO", "Encrypted file not found at: ${entity.encryptedPath}")
+            return@withContext Result.failure(Exception("Encrypted file missing"))
+        }
+
+        val cacheDir = File(context.cacheDir, "VaultPreview").apply { if (!exists()) mkdirs() }
+        val previewFile = File(cacheDir, entity.originalName)
+
+        try {
+            FileInputStream(encryptedFile).use { inputStream ->
+                FileOutputStream(previewFile).use { outputStream ->
+                    VaultManager.decryptStream(inputStream, outputStream, entity.iv, entity.keyVersion)
+                }
+            }
+            Log.d("VAULT_REPO", "Decryption successful: ${previewFile.absolutePath}")
+            logAction("VIEW", "Opened ${entity.originalName}")
+            return@withContext Result.success(previewFile)
+        } catch (e: Exception) {
+            Log.e("VAULT_REPO", "Decryption failed", e)
+            if (previewFile.exists()) previewFile.delete()
+            return@withContext Result.failure(e)
+        }
     }
 
-    suspend fun importBackup(sourceUri: Uri) = withContext(Dispatchers.IO) {
-        // Implementation for importing and decrypting a backup package
+    fun clearPreviewCache() {
+        val cacheDir = File(context.cacheDir, "VaultPreview")
+        if (cacheDir.exists()) cacheDir.deleteRecursively()
     }
+
+    suspend fun getVaultFileById(id: Long) = vaultDao.getVaultFileById(id)
 
     private suspend fun logAction(action: String, details: String) {
+        Log.d("VAULT_REPO", "Action: $action - $details")
         vaultDao.insertAuditLog(VaultAuditLog(action = action, details = details))
     }
 

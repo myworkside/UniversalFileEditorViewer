@@ -1,7 +1,9 @@
 package com.sumitupdat.universalfileeditorviewer.viewmodel
 
+import android.content.Context
 import android.net.Uri
 import android.util.Log
+import android.webkit.MimeTypeMap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sumitupdat.universalfileeditorviewer.data.local.VaultAuditLog
@@ -9,6 +11,7 @@ import com.sumitupdat.universalfileeditorviewer.data.local.VaultFileEntity
 import com.sumitupdat.universalfileeditorviewer.data.repository.VaultRepository
 import com.sumitupdat.universalfileeditorviewer.util.security.VaultSecurityManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
@@ -31,7 +34,9 @@ data class VaultUiState(
     val message: String? = null,
     val isLoading: Boolean = false,
     val sortOrder: String = "DATE",
-    val searchQuery: String = ""
+    val searchQuery: String = "",
+    val viewingFile: File? = null,
+    val viewingMimeType: String? = null
 )
 
 @HiltViewModel
@@ -97,15 +102,15 @@ class VaultViewModel @Inject constructor(
 
     fun unlockWithPin(pin: String) {
         viewModelScope.launch {
-            Log.d("VAULT", "PIN entered for verification")
+            Log.d("VAULT_VM", "PIN entered for verification")
             _uiState.update { it.copy(isLoading = true) }
             
             val result = securityManager.verifyPin(pin)
-            Log.d("VAULT", "Verification result: $result")
+            Log.d("VAULT_VM", "Verification result: $result")
 
             when (result) {
                 is VaultSecurityManager.PinVerificationResult.Success -> {
-                    Log.d("VAULT", "Vault unlocked successfully")
+                    Log.d("VAULT_VM", "Vault unlocked successfully")
                     _uiState.update { it.copy(
                         isLocked = false, 
                         remainingAttempts = 5, 
@@ -114,6 +119,7 @@ class VaultViewModel @Inject constructor(
                     ) }
                 }
                 is VaultSecurityManager.PinVerificationResult.Invalid -> {
+                    Log.w("VAULT_VM", "Invalid PIN attempt. Remaining: ${result.remainingAttempts}")
                     _uiState.update { it.copy(
                         remainingAttempts = result.remainingAttempts,
                         error = "Incorrect PIN. ${result.remainingAttempts} attempts remaining.",
@@ -121,6 +127,7 @@ class VaultViewModel @Inject constructor(
                     ) }
                 }
                 is VaultSecurityManager.PinVerificationResult.Locked -> {
+                    Log.e("VAULT_VM", "Vault locked until ${result.until}")
                     _uiState.update { it.copy(
                         lockoutUntil = result.until,
                         error = "Vault locked due to multiple failed attempts.",
@@ -128,6 +135,7 @@ class VaultViewModel @Inject constructor(
                     ) }
                 }
                 is VaultSecurityManager.PinVerificationResult.Error -> {
+                    Log.e("VAULT_VM", "Verification error: ${result.message}")
                     _uiState.update { it.copy(error = result.message, isLoading = false) }
                 }
             }
@@ -135,10 +143,13 @@ class VaultViewModel @Inject constructor(
     }
 
     fun lockVault() {
-        _uiState.update { it.copy(isLocked = true) }
+        Log.d("VAULT_VM", "Vault locked manually/auto")
+        repository.clearPreviewCache()
+        _uiState.update { it.copy(isLocked = true, viewingFile = null, viewingMimeType = null) }
     }
 
     fun setSortOrder(order: String) {
+        Log.d("VAULT_VM", "Sort order changed: $order")
         _uiState.update { it.copy(sortOrder = order) }
     }
 
@@ -148,11 +159,14 @@ class VaultViewModel @Inject constructor(
 
     fun addFileToVault(uri: Uri) {
         viewModelScope.launch {
+            Log.d("VAULT_VM", "Adding file to vault: $uri")
             _uiState.update { it.copy(isLoading = true) }
             try {
                 repository.moveToVault(uri)
+                Log.d("VAULT_VM", "File added successfully")
                 _uiState.update { it.copy(message = "File encrypted successfully") }
             } catch (e: Exception) {
+                Log.e("VAULT_VM", "Failed to add file", e)
                 _uiState.update { it.copy(error = "Encryption failed: ${e.message}") }
             } finally {
                 _uiState.update { it.copy(isLoading = false) }
@@ -162,11 +176,14 @@ class VaultViewModel @Inject constructor(
 
     fun restoreFile(id: Long, targetDir: File) {
         viewModelScope.launch {
+            Log.d("VAULT_VM", "Restoring file ID: $id to $targetDir")
             _uiState.update { it.copy(isLoading = true) }
             val result = repository.restoreFromVault(id, targetDir)
             result.onSuccess { 
+                Log.d("VAULT_VM", "Restored as $it")
                 _uiState.update { it.copy(message = "Restored as $it", isLoading = false) }
             }.onFailure { 
+                Log.e("VAULT_VM", "Restore failed", it)
                 _uiState.update { it.copy(error = it.message, isLoading = false) }
             }
         }
@@ -174,22 +191,70 @@ class VaultViewModel @Inject constructor(
 
     fun moveToTrash(id: Long) {
         viewModelScope.launch {
+            Log.d("VAULT_VM", "Moving to trash: $id")
             repository.moveToTrash(id)
         }
     }
 
     fun restoreFromTrash(id: Long) {
         viewModelScope.launch {
+            Log.d("VAULT_VM", "Restoring from trash: $id")
             repository.restoreFromTrash(id)
         }
     }
 
     fun deletePermanently(id: Long) {
         viewModelScope.launch {
+            Log.d("VAULT_VM", "Deleting permanently: $id")
             _uiState.update { it.copy(isLoading = true) }
             repository.deletePermanently(id)
             _uiState.update { it.copy(message = "Deleted permanently", isLoading = false) }
         }
+    }
+
+    fun openVaultFile(id: Long) {
+        viewModelScope.launch {
+            Log.d("VAULT", "Opening vault file ID: $id")
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            
+            val result = repository.decryptToCache(id)
+            result.onSuccess { file ->
+                Log.d("VAULT", "Decrypt success: ${file.path}")
+                val extension = file.extension.lowercase()
+                val mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension) 
+                    ?: when(extension) {
+                        "json" -> "application/json"
+                        "xml" -> "application/xml"
+                        "kt", "java", "py", "cpp", "c", "sh", "bat" -> "text/plain"
+                        "md" -> "text/markdown"
+                        else -> "text/plain" // Default to text for internal viewing
+                    }
+                
+                Log.d("VAULT", "Viewer launching for MimeType: $mimeType")
+                _uiState.update { it.copy(
+                    viewingFile = file, 
+                    viewingMimeType = mimeType, 
+                    isLoading = false 
+                ) }
+            }.onFailure { exception ->
+                Log.e("VAULT", "Open failed", exception)
+                _uiState.update { it.copy(
+                    error = "Could not open file: ${exception.message}", 
+                    isLoading = false 
+                ) }
+            }
+        }
+    }
+
+    fun closeViewer() {
+        Log.d("VAULT_VM", "Closing internal viewer")
+        repository.clearPreviewCache()
+        _uiState.update { it.copy(viewingFile = null, viewingMimeType = null) }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        repository.clearPreviewCache()
     }
 
     fun clearError() = _uiState.update { it.copy(error = null) }
