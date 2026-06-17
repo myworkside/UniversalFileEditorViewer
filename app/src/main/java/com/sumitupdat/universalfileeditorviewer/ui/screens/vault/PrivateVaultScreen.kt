@@ -29,6 +29,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
@@ -56,6 +57,7 @@ fun PrivateVaultScreen(
     val uiState by viewModel.uiState.collectAsState()
     val lifecycleOwner = LocalLifecycleOwner.current
     val snackbarHostState = remember { SnackbarHostState() }
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     LaunchedEffect(uiState.message) {
         uiState.message?.let {
@@ -86,9 +88,10 @@ fun PrivateVaultScreen(
     var showTrash by remember { mutableStateOf(false) }
 
     Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
+            LargeTopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         AnimatedContent(targetState = uiState.isLocked, label = "LockIcon") { locked ->
@@ -98,8 +101,8 @@ fun PrivateVaultScreen(
                                 tint = if (locked) MaterialTheme.colorScheme.error else Color(0xFF4CAF50)
                             )
                         }
-                        Spacer(Modifier.width(8.dp))
-                        Text(if (showTrash) "Vault Trash" else "Private Vault")
+                        Spacer(Modifier.width(12.dp))
+                        Text(if (showTrash) "Vault Trash" else "Private Vault", fontWeight = FontWeight.SemiBold)
                     }
                 },
                 navigationIcon = {
@@ -118,12 +121,17 @@ fun PrivateVaultScreen(
                             Icon(Icons.Default.Logout, contentDescription = "Lock")
                         }
                     }
-                }
+                },
+                scrollBehavior = scrollBehavior
             )
         },
         floatingActionButton = {
             if (!uiState.isLocked) {
-                FloatingActionButton(onClick = { filePickerLauncher.launch("*/*") }) {
+                FloatingActionButton(
+                    onClick = { filePickerLauncher.launch("*/*") },
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    shape = RoundedCornerShape(16.dp)
+                ) {
                     Icon(Icons.Default.Add, "Add")
                 }
             }
@@ -500,10 +508,13 @@ fun EmptyVaultState() {
 
 @Composable
 fun SectionHeader(title: String, icon: ImageVector) {
-    Row(modifier = Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        modifier = Modifier.padding(start = 4.dp, bottom = 8.dp, top = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-        Spacer(Modifier.width(8.dp))
-        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.width(12.dp))
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
     }
 }
 

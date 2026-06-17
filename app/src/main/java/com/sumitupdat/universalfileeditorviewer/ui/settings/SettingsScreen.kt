@@ -25,6 +25,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -42,7 +43,7 @@ import com.sumitupdat.universalfileeditorviewer.viewmodel.SettingsViewModel
 fun SettingsScreen(
     onNavigateBack: () -> Unit,
     onNavigateToAnalyzer: () -> Unit = {},
-    onNavigateToLogs: () -> Unit = {},
+    onNavigateToVault: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -113,328 +114,202 @@ fun SettingsScreen(
     }
 
     Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             LargeTopAppBar(
-                title = { Text("Settings", fontWeight = FontWeight.Bold) },
+                title = { Text("Settings", fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
-                scrollBehavior = scrollBehavior
+                scrollBehavior = scrollBehavior,
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer
+                )
             )
         }
     ) { padding ->
-        val filteredQuery = uiState.searchQuery.lowercase()
-
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
             contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
+            // Appearance section...
             item {
-                SearchBar(
-                    inputField = {
-                        SearchBarDefaults.InputField(
-                            query = uiState.searchQuery,
-                            onQueryChange = viewModel::onSearchQueryChange,
-                            onSearch = {},
-                            expanded = false,
-                            onExpandedChange = {},
-                            placeholder = { Text("Search settings") },
-                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                            trailingIcon = if (uiState.searchQuery.isNotEmpty()) {
-                                {
-                                    IconButton(onClick = { viewModel.onSearchQueryChange("") }) {
-                                        Icon(Icons.Default.Close, contentDescription = "Clear")
-                                    }
-                                }
-                            } else null
-                        )
-                    },
-                    expanded = false,
-                    onExpandedChange = {},
-                    modifier = Modifier.fillMaxWidth()
-                ) {}
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-
-            fun shouldShow(vararg keywords: String): Boolean {
-                if (filteredQuery.isEmpty()) return true
-                return keywords.any { it.lowercase().contains(filteredQuery) }
-            }
-
-            if (shouldShow("appearance", "theme", "amoled", "dark", "light", "dynamic", "color", "density", "font")) {
-                item {
-                    SettingsSection(title = "Appearance") {
-                        if (shouldShow("theme", "dark", "light", "system")) {
-                            SettingsItem(
-                                title = "Theme",
-                                subtitle = when(uiState.preferences.theme) {
-                                    ThemeMode.SYSTEM -> "Follow System"
-                                    ThemeMode.LIGHT -> "Light Mode"
-                                    ThemeMode.DARK -> "Dark Mode"
-                                },
-                                icon = Icons.Outlined.Palette,
-                                onClick = { showThemeDialog = true }
-                            )
-                        }
-                        if (shouldShow("amoled", "black", "oled")) {
-                            SettingsSwitch(
-                                title = "AMOLED Black",
-                                subtitle = "Pure black for OLED screens",
-                                icon = Icons.Outlined.DarkMode,
-                                checked = uiState.preferences.isAmoled,
-                                onCheckedChange = viewModel::toggleAmoled
-                            )
-                        }
-                        if (shouldShow("dynamic", "material you", "color")) {
-                            SettingsSwitch(
-                                title = "Dynamic Colors",
-                                subtitle = "Material You integration",
-                                icon = Icons.Outlined.ColorLens,
-                                checked = uiState.preferences.useDynamicColors,
-                                onCheckedChange = viewModel::toggleDynamicColors
-                            )
-                        }
-                        
-                        if (!uiState.preferences.useDynamicColors && shouldShow("accent", "color")) {
-                            AccentColorPicker(
-                                selectedColor = uiState.preferences.accentColor,
-                                onColorSelect = viewModel::updateAccentColor
-                            )
-                        }
-
-                        if (shouldShow("font", "size", "text")) {
-                            FontSizeSlider(
-                                currentMultiplier = uiState.preferences.fontSizeMultiplier,
-                                onMultiplierChange = viewModel::updateFontSize
-                            )
-                        }
-
-                        if (shouldShow("density", "ui", "compact", "cozy", "default")) {
-                            SettingsItem(
-                                title = "UI Density",
-                                subtitle = uiState.preferences.uiDensity.name.lowercase().replaceFirstChar { it.uppercase() },
-                                icon = Icons.AutoMirrored.Outlined.ViewQuilt,
-                                onClick = { showDensityDialog = true }
-                            )
-                        }
-                    }
-                }
-            }
-
-            if (shouldShow("file", "manager", "hidden", "extension", "sorting", "thumbnail", "analyzer")) {
-                item {
-                    SettingsSection(title = "File Manager") {
-                        if (shouldShow("default", "folder", "start")) {
-                            SettingsItem(
-                                title = "Default Start Folder",
-                                subtitle = uiState.preferences.defaultStartFolder,
-                                icon = Icons.Outlined.Folder,
-                                onClick = {}
-                            )
-                        }
-                        if (shouldShow("hidden", "dot")) {
-                            SettingsSwitch(
-                                title = "Show Hidden Files",
-                                subtitle = "Display files starting with dot",
-                                icon = Icons.Outlined.Visibility,
-                                checked = uiState.preferences.showHiddenFiles,
-                                onCheckedChange = viewModel::toggleShowHiddenFiles
-                            )
-                        }
-                        if (shouldShow("extension", "type")) {
-                            SettingsSwitch(
-                                title = "Show Extensions",
-                                subtitle = "Always show file extensions",
-                                icon = Icons.Outlined.Extension,
-                                checked = uiState.preferences.showFileExtensions,
-                                onCheckedChange = viewModel::toggleShowExtensions
-                            )
-                        }
-                        if (shouldShow("sorting", "order", "name", "date", "size")) {
-                            SettingsItem(
-                                title = "File Sorting",
-                                subtitle = uiState.preferences.fileSorting.name.replace("_", " ").lowercase().replaceFirstChar { it.uppercase() },
-                                icon = Icons.AutoMirrored.Outlined.Sort,
-                                onClick = { showSortDialog = true }
-                            )
-                        }
-                        if (shouldShow("thumbnail", "preview", "generation")) {
-                            SettingsSwitch(
-                                title = "Thumbnail Generation",
-                                subtitle = "Auto generate previews",
-                                icon = Icons.Outlined.Image,
-                                checked = uiState.preferences.thumbnailGeneration,
-                                onCheckedChange = viewModel::toggleThumbnailGeneration
-                            )
-                        }
-                        if (shouldShow("analyzer", "storage", "usage")) {
-                            SettingsItem(
-                                title = "Storage Analyzer",
-                                subtitle = "Analyze storage usage",
-                                icon = Icons.Outlined.Analytics,
-                                onClick = onNavigateToAnalyzer
-                            )
-                        }
-                    }
-                }
-            }
-
-            if (shouldShow("security", "privacy", "biometric", "lock", "credential", "vault", "delete", "audit", "logs")) {
-                item {
-                    SettingsSection(title = "Security & Privacy") {
-                        if (shouldShow("biometric", "fingerprint", "face")) {
-                            SettingsSwitch(
-                                title = "Biometric Unlock",
-                                subtitle = "Secure vault with fingerprint/face",
-                                icon = Icons.Outlined.Fingerprint,
-                                checked = uiState.preferences.biometricEnabled,
-                                onCheckedChange = viewModel::updateBiometric
-                            )
-                        }
-                        if (shouldShow("credential", "pin", "pattern", "password")) {
-                            SettingsSwitch(
-                                title = "Device Credential",
-                                subtitle = "Use PIN/Pattern/Password",
-                                icon = Icons.Outlined.Lock,
-                                checked = uiState.preferences.deviceCredentialEnabled,
-                                onCheckedChange = viewModel::updateDeviceCredential
-                            )
-                        }
-                        if (shouldShow("auto", "lock", "vault", "timer")) {
-                            SettingsSwitch(
-                                title = "Auto Lock Vault",
-                                subtitle = "Lock when app is closed",
-                                icon = Icons.Outlined.Timer,
-                                checked = uiState.preferences.autoLockVault,
-                                onCheckedChange = viewModel::toggleAutoLockVault
-                            )
-                        }
-                        if (shouldShow("secure", "delete", "overwrite", "shield")) {
-                            SettingsSwitch(
-                                title = "Secure Delete",
-                                subtitle = "Overwrite files before deleting",
-                                icon = Icons.Outlined.Shield,
-                                checked = uiState.preferences.secureDelete,
-                                onCheckedChange = viewModel::toggleSecureDelete
-                            )
-                        }
-                        if (shouldShow("audit", "logs", "history", "security")) {
-                            SettingsItem(
-                                title = "Audit Logs",
-                                subtitle = "Review security events",
-                                icon = Icons.Outlined.History,
-                                onClick = onNavigateToLogs
-                            )
-                        }
-                    }
-                }
-            }
-
-            if (shouldShow("wireless", "sharing", "receive", "background", "transfer", "discovery", "wifi", "bluetooth")) {
-                item {
-                    SettingsSection(title = "Wireless Sharing") {
-                        if (shouldShow("auto", "receive")) {
-                            SettingsSwitch(
-                                title = "Auto Receive",
-                                subtitle = "Accept files automatically",
-                                icon = Icons.Outlined.Wifi,
-                                checked = uiState.preferences.autoReceiveFiles,
-                                onCheckedChange = viewModel::toggleAutoReceiveFiles
-                            )
-                        }
-                        if (shouldShow("background", "transfer")) {
-                            SettingsSwitch(
-                                title = "Background Transfers",
-                                subtitle = "Keep transferring when app minimized",
-                                icon = Icons.Outlined.CloudSync,
-                                checked = uiState.preferences.backgroundTransfers,
-                                onCheckedChange = viewModel::toggleBackgroundTransfers
-                            )
-                        }
-                        if (shouldShow("device", "discovery", "radar", "visible")) {
-                            SettingsSwitch(
-                                title = "Device Discovery",
-                                subtitle = "Make this device visible to others",
-                                icon = Icons.Outlined.Radar,
-                                checked = uiState.preferences.deviceDiscovery,
-                                onCheckedChange = viewModel::toggleDeviceDiscovery
-                            )
-                        }
-                    }
-                }
-            }
-
-            if (shouldShow("maintenance", "clear", "cache", "export", "import", "backup", "restore")) {
-                item {
-                    SettingsSection(title = "Maintenance") {
-                        if (shouldShow("clear", "cache", "temporary")) {
-                            SettingsItem(
-                                title = "Clear Cache",
-                                subtitle = "Free up temporary storage",
-                                icon = Icons.Outlined.DeleteSweep,
-                                onClick = viewModel::clearCache
-                            )
-                        }
-                        if (shouldShow("export", "backup")) {
-                            SettingsItem(
-                                title = "Export Settings",
-                                subtitle = "Backup your preferences",
-                                icon = Icons.Outlined.FileDownload,
-                                onClick = viewModel::exportSettings
-                            )
-                        }
-                        if (shouldShow("import", "restore")) {
-                            SettingsItem(
-                                title = "Import Settings",
-                                subtitle = "Restore your preferences",
-                                icon = Icons.Outlined.FileUpload,
-                                onClick = viewModel::importSettings
-                            )
-                        }
-                    }
-                }
-            }
-
-            if (shouldShow("language", "region", "date", "time")) {
-                item {
-                    SettingsSection(title = "Language & Region") {
-                        SettingsItem(
-                            title = "Language",
-                            subtitle = uiState.preferences.language,
-                            icon = Icons.Outlined.Language,
-                            onClick = { showLanguageDialog = true }
+                SettingsSection(title = "Appearance") {
+                    SettingsItem(
+                        title = "Theme",
+                        subtitle = when(uiState.preferences.theme) {
+                            ThemeMode.SYSTEM -> "Follow System"
+                            ThemeMode.LIGHT -> "Light Mode"
+                            ThemeMode.DARK -> "Dark Mode"
+                        },
+                        icon = Icons.Outlined.Palette,
+                        onClick = { showThemeDialog = true }
+                    )
+                    SettingsSwitch(
+                        title = "AMOLED Black",
+                        subtitle = "Pure black for OLED screens",
+                        icon = Icons.Outlined.DarkMode,
+                        checked = uiState.preferences.isAmoled,
+                        onCheckedChange = viewModel::toggleAmoled
+                    )
+                    SettingsSwitch(
+                        title = "Dynamic Colors",
+                        subtitle = "Material You integration",
+                        icon = Icons.Outlined.ColorLens,
+                        checked = uiState.preferences.useDynamicColors,
+                        onCheckedChange = viewModel::toggleDynamicColors
+                    )
+                    if (!uiState.preferences.useDynamicColors) {
+                        AccentColorPicker(
+                            selectedColor = uiState.preferences.accentColor,
+                            onColorSelect = viewModel::updateAccentColor
                         )
                     }
+                    FontSizeSlider(
+                        currentMultiplier = uiState.preferences.fontSizeMultiplier,
+                        onMultiplierChange = viewModel::updateFontSize
+                    )
+                    SettingsItem(
+                        title = "UI Density",
+                        subtitle = uiState.preferences.uiDensity.name.lowercase().replaceFirstChar { it.uppercase() },
+                        icon = Icons.AutoMirrored.Outlined.ViewQuilt,
+                        onClick = { showDensityDialog = true }
+                    )
                 }
             }
 
-            if (shouldShow("about", "version", "name", "app", "premium")) {
-                item {
-                    SettingsSection(title = "About") {
-                        if (shouldShow("name", "app")) {
-                            SettingsItem(
-                                title = "App Name",
-                                subtitle = "Universal File Editor & Viewer",
-                                icon = Icons.Outlined.AppShortcut,
-                                onClick = {}
-                            )
-                        }
-                        if (shouldShow("version", "premium")) {
-                            SettingsItem(
-                                title = "Version",
-                                subtitle = "1.0.0 (Premium)",
-                                icon = Icons.Outlined.Info,
-                                onClick = {}
-                            )
-                        }
-                    }
+            // 2. File Manager
+            item {
+                SettingsSection(title = "File Manager") {
+                    SettingsSwitch(
+                        title = "Show Hidden Files",
+                        subtitle = "Display files starting with dot",
+                        icon = Icons.Outlined.Visibility,
+                        checked = uiState.preferences.showHiddenFiles,
+                        onCheckedChange = viewModel::toggleShowHiddenFiles
+                    )
+                    SettingsSwitch(
+                        title = "Show Extensions",
+                        subtitle = "Always show file extensions",
+                        icon = Icons.Outlined.Extension,
+                        checked = uiState.preferences.showFileExtensions,
+                        onCheckedChange = viewModel::toggleShowExtensions
+                    )
+                    SettingsItem(
+                        title = "Default Sorting",
+                        subtitle = uiState.preferences.fileSorting.name.replace("_", " ").lowercase().replaceFirstChar { it.uppercase() },
+                        icon = Icons.AutoMirrored.Outlined.Sort,
+                        onClick = { showSortDialog = true }
+                    )
+                    SettingsSwitch(
+                        title = "Thumbnail Generation",
+                        subtitle = "Auto generate previews",
+                        icon = Icons.Outlined.Image,
+                        checked = uiState.preferences.thumbnailGeneration,
+                        onCheckedChange = viewModel::toggleThumbnailGeneration
+                    )
+                    SettingsItem(
+                        title = "Storage Analyzer",
+                        subtitle = "Detailed storage insights",
+                        icon = Icons.Outlined.Analytics,
+                        onClick = onNavigateToAnalyzer
+                    )
                 }
+            }
+
+            // 3. Security
+            item {
+                SettingsSection(title = "Security") {
+                    SettingsItem(
+                        title = "Private Vault",
+                        subtitle = "Manage encrypted files",
+                        icon = Icons.Outlined.Lock,
+                        onClick = onNavigateToVault
+                    )
+                    SettingsSwitch(
+                        title = "PIN Protection",
+                        subtitle = "Secure vault with code",
+                        icon = Icons.Outlined.Password,
+                        checked = uiState.preferences.biometricEnabled,
+                        onCheckedChange = viewModel::updateBiometric
+                    )
+                    SettingsSwitch(
+                        title = "Auto Lock Vault",
+                        subtitle = "Lock when app is closed",
+                        icon = Icons.Outlined.Timer,
+                        checked = uiState.preferences.autoLockVault,
+                        onCheckedChange = viewModel::toggleAutoLockVault
+                    )
+                    SettingsSwitch(
+                        title = "Secure Delete",
+                        subtitle = "Overwrite files before deleting",
+                        icon = Icons.Outlined.Shield,
+                        checked = uiState.preferences.secureDelete,
+                        onCheckedChange = viewModel::toggleSecureDelete
+                    )
+                }
+            }
+
+            // 4. Wireless Sharing
+            item {
+                SettingsSection(title = "Wireless Sharing") {
+                    SettingsSwitch(
+                        title = "Auto Receive Files",
+                        subtitle = "Accept files automatically",
+                        icon = Icons.Outlined.Wifi,
+                        checked = uiState.preferences.autoReceiveFiles,
+                        onCheckedChange = viewModel::toggleAutoReceiveFiles
+                    )
+                    SettingsSwitch(
+                        title = "Background Transfers",
+                        subtitle = "Keep transferring when app minimized",
+                        icon = Icons.Outlined.CloudSync,
+                        checked = uiState.preferences.backgroundTransfers,
+                        onCheckedChange = viewModel::toggleBackgroundTransfers
+                    )
+                    SettingsSwitch(
+                        title = "Device Discovery",
+                        subtitle = "Make this device visible to others",
+                        icon = Icons.Outlined.Radar,
+                        checked = uiState.preferences.deviceDiscovery,
+                        onCheckedChange = viewModel::toggleDeviceDiscovery
+                    )
+                }
+            }
+
+            // 5. Backup & Data
+            item {
+                SettingsSection(title = "Backup & Data") {
+                    SettingsItem(
+                        title = "Export Settings",
+                        subtitle = "Backup your preferences",
+                        icon = Icons.Outlined.FileDownload,
+                        onClick = viewModel::exportSettings
+                    )
+                    SettingsItem(
+                        title = "Import Settings",
+                        subtitle = "Restore your preferences",
+                        icon = Icons.Outlined.FileUpload,
+                        onClick = viewModel::importSettings
+                    )
+                    SettingsItem(
+                        title = "Clear Cache",
+                        subtitle = "Free up temporary storage",
+                        icon = Icons.Outlined.DeleteSweep,
+                        onClick = viewModel::clearCache
+                    )
+                }
+            }
+
+            item {
+                Spacer(Modifier.height(16.dp))
             }
         }
 
@@ -444,6 +319,72 @@ fun SettingsScreen(
             }
         }
     }
+}
+
+@Composable
+fun SettingsSection(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(start = 12.dp, bottom = 8.dp)
+        )
+        ElevatedCard(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.elevatedCardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+            )
+        ) {
+            Column(content = content)
+        }
+    }
+}
+
+@Composable
+fun SettingsItem(
+    title: String,
+    subtitle: String? = null,
+    icon: ImageVector,
+    onClick: () -> Unit
+) {
+    ListItem(
+        headlineContent = { Text(title, fontWeight = FontWeight.Medium) },
+        supportingContent = subtitle?.let { { Text(it, style = MaterialTheme.typography.bodySmall) } },
+        leadingContent = { Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+        modifier = Modifier.clickable(onClick = onClick),
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+    )
+}
+
+@Composable
+fun SettingsSwitch(
+    title: String,
+    subtitle: String? = null,
+    icon: ImageVector,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    ListItem(
+        headlineContent = { Text(title, fontWeight = FontWeight.Medium) },
+        supportingContent = subtitle?.let { { Text(it, style = MaterialTheme.typography.bodySmall) } },
+        leadingContent = { Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+        trailingContent = {
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                thumbContent = if (checked) {
+                    { Icon(Icons.Filled.Check, null, Modifier.size(SwitchDefaults.IconSize)) }
+                } else null
+            )
+        },
+        modifier = Modifier.clickable { onCheckedChange(!checked) },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+    )
 }
 
 @Composable
@@ -458,8 +399,12 @@ fun AccentColorPicker(
     )
 
     Column(Modifier.padding(16.dp)) {
-        Text("Accent Color", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.Brush, null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(12.dp))
+            Text("Accent Color", style = MaterialTheme.typography.bodyLarge)
+        }
+        Spacer(Modifier.height(12.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
@@ -490,7 +435,7 @@ fun FontSizeSlider(
 ) {
     var sliderValue by remember(currentMultiplier) { mutableFloatStateOf(currentMultiplier) }
 
-    Column(Modifier.padding(16.dp)) {
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.FormatSize, null, tint = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.width(12.dp))
@@ -532,10 +477,7 @@ fun ThemeSelectionDialog(
                             .padding(horizontal = 16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        RadioButton(
-                            selected = (mode == currentMode),
-                            onClick = null
-                        )
+                        RadioButton(selected = (mode == currentMode), onClick = null)
                         Text(
                             text = when(mode) {
                                 ThemeMode.SYSTEM -> "Follow System"
@@ -549,9 +491,7 @@ fun ThemeSelectionDialog(
                 }
             }
         },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
 
@@ -589,9 +529,7 @@ fun SortOrderSelectionDialog(
                 }
             }
         },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
 
@@ -629,9 +567,7 @@ fun DensitySelectionDialog(
                 }
             }
         },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
 
@@ -670,71 +606,6 @@ fun LanguageSelectionDialog(
                 }
             }
         },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
-    )
-}
-
-@Composable
-fun SettingsSection(
-    title: String,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(start = 8.dp, bottom = 8.dp)
-        )
-        ElevatedCard(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.elevatedCardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-            )
-        ) {
-            Column(modifier = Modifier.fillMaxWidth(), content = content)
-        }
-    }
-}
-
-@Composable
-fun SettingsItem(
-    title: String,
-    subtitle: String? = null,
-    icon: ImageVector,
-    onClick: () -> Unit
-) {
-    ListItem(
-        headlineContent = { Text(title, fontWeight = FontWeight.Medium) },
-        supportingContent = subtitle?.let { { Text(it) } },
-        leadingContent = { Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-        modifier = Modifier.clickable(onClick = onClick),
-        colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
-    )
-}
-
-@Composable
-fun SettingsSwitch(
-    title: String,
-    subtitle: String? = null,
-    icon: ImageVector,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    ListItem(
-        headlineContent = { Text(title, fontWeight = FontWeight.Medium) },
-        supportingContent = subtitle?.let { { Text(it) } },
-        leadingContent = { Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-        trailingContent = {
-            Switch(
-                checked = checked,
-                onCheckedChange = onCheckedChange
-            )
-        },
-        modifier = Modifier.clickable { onCheckedChange(!checked) },
-        colors = ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }

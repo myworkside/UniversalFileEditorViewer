@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
@@ -73,11 +74,19 @@ fun MainScreen(
         NavItem("about", "About", Icons.Outlined.Info, Icons.Filled.Info)
     )
 
+    // Screens that handle their own TopAppBar and layout
+    val isFullscreenRoute = currentRoute in listOf(
+        "settings", "about", "wireless", "devtools", 
+        "vault", "analyzer", "favorites", "recent"
+    ) || currentRoute.startsWith("viewer") || currentRoute.startsWith("devtools/")
+
+    val showMainBars = !isFullscreenRoute
+
     BoxWithConstraints {
         val isWideScreen = maxWidth >= 600.dp
         
         Row(modifier = Modifier.fillMaxSize()) {
-            if (isWideScreen && !isSearching) {
+            if (isWideScreen && !isSearching && showMainBars) {
                 NavigationRail(
                     containerColor = MaterialTheme.colorScheme.surface,
                     contentColor = MaterialTheme.colorScheme.onSurface,
@@ -111,72 +120,74 @@ fun MainScreen(
 
             Scaffold(
                 topBar = {
-                    if (isSearching) {
-                        SearchBar(
-                            query = searchQuery,
-                            onQueryChange = { viewModel.onSearchQueryChange(it) },
-                            onSearch = { isSearching = false },
-                            active = true,
-                            onActiveChange = { if (!it) {
-                                isSearching = false
-                                viewModel.onSearchQueryChange("")
-                            } },
-                            placeholder = { Text("Search all storage...") },
-                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                            trailingIcon = {
-                                IconButton(onClick = { 
-                                    if (searchQuery.isNotEmpty()) viewModel.onSearchQueryChange("")
-                                    else isSearching = false 
-                                }) {
-                                    Icon(Icons.Default.Close, contentDescription = "Close")
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
-                        ) { }
-                    } else {
-                        TopAppBar(
-                            title = { 
-                                Column {
-                                    val title = if (currentRoute == "browser") {
-                                        val category = selectedCategory
-                                        if (category != null) {
-                                            category.name.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
+                    if (showMainBars) {
+                        if (isSearching) {
+                            SearchBar(
+                                query = searchQuery,
+                                onQueryChange = { viewModel.onSearchQueryChange(it) },
+                                onSearch = { isSearching = false },
+                                active = true,
+                                onActiveChange = { if (!it) {
+                                    isSearching = false
+                                    viewModel.onSearchQueryChange("")
+                                } },
+                                placeholder = { Text("Search all storage...") },
+                                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                                trailingIcon = {
+                                    IconButton(onClick = { 
+                                        if (searchQuery.isNotEmpty()) viewModel.onSearchQueryChange("")
+                                        else isSearching = false 
+                                    }) {
+                                        Icon(Icons.Default.Close, contentDescription = "Close")
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                            ) { }
+                        } else {
+                            TopAppBar(
+                                title = { 
+                                    Column {
+                                        val title = if (currentRoute == "browser") {
+                                            val category = selectedCategory
+                                            if (category != null) {
+                                                category.name.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
+                                            } else {
+                                                currentPath.split("/").last().ifEmpty { "Explorer" }
+                                            }
                                         } else {
-                                            currentPath.split("/").last().ifEmpty { "Explorer" }
+                                            getRouteTitle(currentRoute)
+                                        }
+                                        Text(text = title, style = MaterialTheme.typography.titleLarge)
+                                        if (currentRoute == "browser" && currentPath.isNotEmpty() && selectedCategory == null) {
+                                            Text(currentPath, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                                        }
+                                    }
+                                },
+                                navigationIcon = {
+                                    if (currentRoute == "browser" && (currentPath.isNotEmpty() || selectedCategory != null)) {
+                                        IconButton(onClick = { viewModel.navigateUp() }) {
+                                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                                         }
                                     } else {
-                                        getRouteTitle(currentRoute)
+                                        IconButton(onClick = { /* Open Drawer */ }) {
+                                            Icon(Icons.Default.Menu, contentDescription = "Menu")
+                                        }
                                     }
-                                    Text(text = title, style = MaterialTheme.typography.titleLarge)
-                                    if (currentRoute == "browser" && currentPath.isNotEmpty() && selectedCategory == null) {
-                                        Text(currentPath, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                                },
+                                actions = {
+                                    IconButton(onClick = { isSearching = true }) {
+                                        Icon(Icons.Default.Search, contentDescription = "Search")
                                     }
-                                }
-                            },
-                            navigationIcon = {
-                                if (currentRoute == "browser" && (currentPath.isNotEmpty() || selectedCategory != null)) {
-                                    IconButton(onClick = { viewModel.navigateUp() }) {
-                                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                                    }
-                                } else {
-                                    IconButton(onClick = { /* Open Drawer */ }) {
-                                        Icon(Icons.Default.Menu, contentDescription = "Menu")
+                                    IconButton(onClick = { viewModel.refresh() }) {
+                                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                                     }
                                 }
-                            },
-                            actions = {
-                                IconButton(onClick = { isSearching = true }) {
-                                    Icon(Icons.Default.Search, contentDescription = "Search")
-                                }
-                                IconButton(onClick = { viewModel.refresh() }) {
-                                    Icon(Icons.Default.Refresh, contentDescription = "Refresh")
-                                }
-                            }
-                        )
+                            )
+                        }
                     }
                 },
                 bottomBar = {
-                    if (!isWideScreen && !isSearching) {
+                    if (!isWideScreen && !isSearching && showMainBars) {
                         Surface(
                             tonalElevation = 3.dp,
                             shadowElevation = 8.dp
@@ -219,7 +230,7 @@ fun MainScreen(
                     }
                 },
                 floatingActionButton = {
-                    if ((currentRoute == "dashboard" || currentRoute == "browser") && !isSearching) {
+                    if ((currentRoute == "dashboard" || currentRoute == "browser") && !isSearching && showMainBars) {
                         FloatingActionButton(
                             onClick = { isSearching = true },
                             containerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -231,7 +242,7 @@ fun MainScreen(
                     }
                 }
             ) { padding ->
-                Box(modifier = Modifier.padding(padding).fillMaxSize()) {
+                Box(modifier = Modifier.padding(if (showMainBars) padding else PaddingValues(0.dp)).fillMaxSize()) {
                     NavHost(
                         navController = navController, 
                         startDestination = "dashboard",
@@ -265,7 +276,9 @@ fun MainScreen(
                         composable("recent") {
                             val recentFiles by viewModel.recentFiles.collectAsState()
                             SimpleFileList(
+                                title = "Recent Files",
                                 files = recentFiles.map { FileItem(it.name, it.path, it.isDirectory, extension = File(it.path).extension) },
+                                onBack = { navController.popBackStack() },
                                 onFileClick = { file ->
                                     val encodedPath = URLEncoder.encode(file.path, StandardCharsets.UTF_8.toString())
                                     navController.navigate("viewer/$encodedPath")
@@ -277,7 +290,9 @@ fun MainScreen(
                         composable("favorites") {
                             val favorites by viewModel.favorites.collectAsState()
                             SimpleFileList(
+                                title = "Favorite Files",
                                 files = favorites.map { FileItem(it.name, it.path, it.isDirectory, extension = File(it.path).extension, isFavorite = true) },
+                                onBack = { navController.popBackStack() },
                                 onFileClick = { file ->
                                     val encodedPath = URLEncoder.encode(file.path, StandardCharsets.UTF_8.toString())
                                     navController.navigate("viewer/$encodedPath")
@@ -309,7 +324,7 @@ fun MainScreen(
                             SettingsScreen(
                                 onNavigateBack = { navController.popBackStack() },
                                 onNavigateToAnalyzer = { navController.navigate("analyzer") },
-                                onNavigateToLogs = { /* Navigate to logs if available */ }
+                                onNavigateToVault = { navController.navigate("vault") }
                             )
                         }
                         composable("wireless") {
@@ -450,27 +465,43 @@ fun getRouteTitle(route: String): String {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SimpleFileList(
+    title: String,
     files: List<FileItem>,
+    onBack: () -> Unit,
     onFileClick: (FileItem) -> Unit,
     onDelete: (FileItem) -> Unit,
     onMoveToVault: ((FileItem) -> Unit)? = null
 ) {
-    if (files.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No files found")
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(title, fontWeight = FontWeight.SemiBold) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                }
+            )
         }
-    } else {
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
-            items(files) { file ->
-                FileItemRow(
-                    fileItem = file,
-                    onClick = { onFileClick(file) },
-                    onDelete = { onDelete(file) },
-                    onFavoriteToggle = { /* Not applicable here */ },
-                    onMoveToVault = if (onMoveToVault != null) { { onMoveToVault(file) } } else null
-                )
+    ) { padding ->
+        if (files.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                Text("No files found", color = MaterialTheme.colorScheme.outline)
+            }
+        } else {
+            LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
+                items(files) { file ->
+                    FileItemRow(
+                        fileItem = file,
+                        onClick = { onFileClick(file) },
+                        onDelete = { onDelete(file) },
+                        onFavoriteToggle = { /* Not applicable here */ },
+                        onMoveToVault = if (onMoveToVault != null) { { onMoveToVault(file) } } else null
+                    )
+                }
             }
         }
     }

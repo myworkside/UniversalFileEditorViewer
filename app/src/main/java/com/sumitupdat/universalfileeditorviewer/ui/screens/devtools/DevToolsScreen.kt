@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,55 +23,60 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DevToolsScreen(
     onBack: () -> Unit,
     onLaunchTool: (String) -> Unit
 ) {
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+
     Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            TopAppBar(
-                title = { Text("Developer Tools") },
+            LargeTopAppBar(
+                title = { Text("Developer Tools", fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
-                    IconButton(onClick = { /* Settings */ }) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
+                    IconButton(onClick = { /* Settings or Info */ }) {
+                        Icon(Icons.Default.Info, contentDescription = "Info")
                     }
-                }
+                },
+                scrollBehavior = scrollBehavior
             )
         }
     ) { padding ->
-        Column(
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .padding(padding),
+            contentPadding = PaddingValues(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                contentPadding = PaddingValues(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) { DevToolCategoryHeader("Code Editors", Icons.Default.Code) }
-                items(codeEditors) { editor ->
-                    DevToolCard(editor.name, editor.icon, editor.color) { onLaunchTool(editor.name) }
-                }
-
-                item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) { DevToolCategoryHeader("Android Tools", Icons.Default.Android) }
-                items(androidTools) { tool ->
-                    DevToolCard(tool.name, tool.icon, tool.color) { onLaunchTool(tool.name) }
-                }
-
-                item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) { DevToolCategoryHeader("File Tools", Icons.Default.FolderZip) }
-                items(fileTools) { tool ->
-                    DevToolCard(tool.name, tool.icon, tool.color) { onLaunchTool(tool.name) }
-                }
+            item(span = { GridItemSpan(2) }) { DevToolCategoryHeader("Code Editors", Icons.Default.Code) }
+            items(codeEditors) { editor ->
+                DevToolCard(editor.name, editor.icon, editor.color) { onLaunchTool(editor.name) }
             }
+
+            item(span = { GridItemSpan(2) }) { DevToolCategoryHeader("Android Tools", Icons.Default.Android) }
+            items(androidTools) { tool ->
+                DevToolCard(tool.name, tool.icon, tool.color) { onLaunchTool(tool.name) }
+            }
+
+            item(span = { GridItemSpan(2) }) { DevToolCategoryHeader("File Tools", Icons.Default.FolderZip) }
+            items(fileTools) { tool ->
+                DevToolCard(tool.name, tool.icon, tool.color) { onLaunchTool(tool.name) }
+            }
+            
+            item(span = { GridItemSpan(2) }) { Spacer(Modifier.height(16.dp)) }
         }
     }
 }
@@ -80,12 +86,12 @@ fun DevToolCategoryHeader(title: String, icon: ImageVector) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp),
+            .padding(start = 4.dp, bottom = 8.dp, top = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-        Spacer(Modifier.width(8.dp))
-        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.width(12.dp))
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
     }
 }
 

@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -24,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -48,7 +50,9 @@ fun WirelessSharingScreen(
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
     var selectedDeviceForTransfer by remember { mutableStateOf<NearbyDevice?>(null) }
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     
+    // Permissions... (no changes here)
     val permissionsToRequest = mutableListOf(
         Manifest.permission.ACCESS_FINE_LOCATION,
         Manifest.permission.ACCESS_COARSE_LOCATION
@@ -84,8 +88,6 @@ fun WirelessSharingScreen(
                 when (device) {
                     is NearbyDevice.Bluetooth -> viewModel.sendFileBluetooth(device.device, uri)
                     is NearbyDevice.WifiDirect -> {
-                        // For Wi-Fi Direct, we need the group owner IP which is usually in connectionInfo
-                        // This is simplified; real impl needs to wait for connection
                         Toast.makeText(context, "Connecting to Wi-Fi device...", Toast.LENGTH_SHORT).show()
                     }
                 }
@@ -105,23 +107,25 @@ fun WirelessSharingScreen(
     }
 
     Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            TopAppBar(
-                title = { Text("Wireless Sharing") },
+            LargeTopAppBar(
+                title = { Text("Wireless Sharing", fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
                     if (uiState.isScanning) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp).padding(end = 12.dp), strokeWidth = 2.dp)
                     } else {
                         IconButton(onClick = { viewModel.startDiscovery() }) {
                             Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                         }
                     }
-                }
+                },
+                scrollBehavior = scrollBehavior
             )
         }
     ) { padding ->
@@ -177,7 +181,13 @@ fun WirelessSharingScreen(
             }
             if (uiState.discoveredDevices.isEmpty()) {
                 item {
-                    Text("Searching for nearby devices...", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                    Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                            Spacer(Modifier.height(16.dp))
+                            Text("Searching for nearby devices...", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline)
+                        }
+                    }
                 }
             } else {
                 items(uiState.discoveredDevices) { device ->
@@ -192,7 +202,11 @@ fun WirelessSharingScreen(
             if (uiState.transferHistory.isNotEmpty()) {
                 item {
                     SectionHeader(title = "Transfer History", icon = Icons.Default.History)
-                    Card(modifier = Modifier.fillMaxWidth()) {
+                    ElevatedCard(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+                    ) {
                         Column(modifier = Modifier.padding(8.dp)) {
                             uiState.transferHistory.take(10).forEach { transfer ->
                                 TransferRow(transfer)
@@ -209,6 +223,10 @@ fun WirelessSharingScreen(
                     totalShared = formatSize(uiState.totalSharedData),
                     avgSpeed = "${String.format(Locale.US, "%.1f", uiState.averageSpeed / 1024 / 1024)} MB/s"
                 )
+            }
+            
+            item {
+                Spacer(Modifier.height(32.dp))
             }
         }
     }
@@ -229,35 +247,35 @@ fun WirelessSharingScreen(
 
 @Composable
 fun ActiveTransferCard(progress: TransferProgress) {
-    Card(
+    ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.1f))
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     imageVector = if (progress.status == "Sending") Icons.Default.Upload else Icons.Default.Download,
                     contentDescription = null,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(24.dp),
+                    tint = MaterialTheme.colorScheme.primary
                 )
-                Spacer(Modifier.width(8.dp))
-                Text(progress.fileName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, maxLines = 1)
-                Spacer(Modifier.weight(1f))
-                Text("${(progress.percentage * 100).toInt()}%", style = MaterialTheme.typography.labelMedium)
+                Spacer(Modifier.width(12.dp))
+                Text(progress.fileName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.weight(1f))
+                Text("${(progress.percentage * 100).toInt()}%", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(16.dp))
             LinearProgressIndicator(
                 progress = { progress.percentage },
-                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp)),
+                modifier = Modifier.fillMaxWidth().height(8.dp).clip(CircleShape),
+                trackColor = MaterialTheme.colorScheme.surfaceVariant
             )
-            Spacer(Modifier.height(4.dp))
-            Row {
-                Text(
-                    text = "${formatSize(progress.bytesTransferred)} / ${formatSize(progress.totalBytes)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline
-                )
-            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "${formatSize(progress.bytesTransferred)} / ${formatSize(progress.totalBytes)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline
+            )
         }
     }
 }
@@ -265,8 +283,8 @@ fun ActiveTransferCard(progress: TransferProgress) {
 @Composable
 fun SharingActionCard(title: String, icon: ImageVector, color: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Card(
-        modifier = modifier.height(100.dp).clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = color),
+        modifier = modifier.height(110.dp).clickable { onClick() },
+        colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.8f)),
         shape = RoundedCornerShape(24.dp)
     ) {
         Column(
@@ -274,8 +292,8 @@ fun SharingActionCard(title: String, icon: ImageVector, color: Color, modifier: 
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(32.dp))
-            Spacer(Modifier.height(4.dp))
+            Icon(icon, contentDescription = null, modifier = Modifier.size(36.dp))
+            Spacer(Modifier.height(8.dp))
             Text(title, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
         }
     }
@@ -284,74 +302,72 @@ fun SharingActionCard(title: String, icon: ImageVector, color: Color, modifier: 
 @Composable
 fun SectionHeader(title: String, icon: ImageVector) {
     Row(
-        modifier = Modifier.padding(bottom = 12.dp),
+        modifier = Modifier.padding(start = 4.dp, bottom = 12.dp, top = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
-        Spacer(Modifier.width(8.dp))
-        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.width(12.dp))
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
     }
 }
 
 @Composable
 fun DeviceItem(device: NearbyDevice, onClick: () -> Unit) {
     ListItem(
-        headlineContent = { Text(device.name) },
+        headlineContent = { Text(device.name, fontWeight = FontWeight.Medium) },
         supportingContent = { 
             val type = if (device is NearbyDevice.Bluetooth) "Bluetooth" else "Wi-Fi Direct"
-            Text("$type • ${device.status}") 
+            Text("$type • ${device.status}", style = MaterialTheme.typography.bodySmall) 
         },
         leadingContent = {
             Surface(
                 modifier = Modifier.size(48.dp),
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.primaryContainer
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = if (device is NearbyDevice.Bluetooth) Icons.Default.Bluetooth else Icons.Default.Wifi,
-                        contentDescription = null
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.secondary
                     )
                 }
             }
         },
         trailingContent = {
-            Icon(Icons.Default.ChevronRight, contentDescription = null)
+            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline)
         },
-        modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable { onClick() }
+        modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable { onClick() },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent)
     )
 }
 
 @Composable
 fun TransferRow(transfer: TransferEntity) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            imageVector = if (transfer.transferType == TransferType.SEND) Icons.Default.Upload else Icons.Default.Download,
-            contentDescription = null,
-            modifier = Modifier.size(20.dp),
-            tint = if (transfer.transferStatus == TransferStatus.COMPLETED) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
-        )
-        Spacer(Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(transfer.fileName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1)
-            Text("${formatSize(transfer.fileSize)} • ${transfer.deviceName}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-        }
-        Text(
-            text = when(transfer.transferStatus) {
-                TransferStatus.COMPLETED -> "Done"
-                TransferStatus.FAILED -> "Failed"
-                TransferStatus.CANCELLED -> "Cancelled"
-                else -> "Unknown"
-            },
-            style = MaterialTheme.typography.bodySmall,
-            color = if (transfer.transferStatus == TransferStatus.COMPLETED) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
-        )
-    }
+    ListItem(
+        headlineContent = { Text(transfer.fileName, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
+        supportingContent = { Text("${formatSize(transfer.fileSize)} • ${transfer.deviceName}", style = MaterialTheme.typography.bodySmall) },
+        leadingContent = {
+            Icon(
+                imageVector = if (transfer.transferType == TransferType.SEND) Icons.Default.Upload else Icons.Default.Download,
+                contentDescription = null,
+                tint = if (transfer.transferStatus == TransferStatus.COMPLETED) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+            )
+        },
+        trailingContent = {
+            Text(
+                text = when(transfer.transferStatus) {
+                    TransferStatus.COMPLETED -> "Done"
+                    TransferStatus.FAILED -> "Failed"
+                    TransferStatus.CANCELLED -> "Cancelled"
+                    else -> "Unknown"
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = if (transfer.transferStatus == TransferStatus.COMPLETED) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+            )
+        },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+    )
 }
 
 @Composable
@@ -364,12 +380,16 @@ fun StatisticsGrid(totalShared: String, avgSpeed: String) {
 
 @Composable
 fun StatCard(label: String, value: String, icon: ImageVector, modifier: Modifier = Modifier) {
-    Card(modifier = modifier, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.height(8.dp))
+    ElevatedCard(
+        modifier = modifier, 
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(28.dp), tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.height(12.dp))
             Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
         }
     }
 }
