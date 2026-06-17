@@ -35,7 +35,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.fragment.app.FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -54,7 +53,6 @@ fun PrivateVaultScreen(
     viewModel: VaultViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
-    val activity = context as? FragmentActivity
     val uiState by viewModel.uiState.collectAsState()
     val lifecycleOwner = LocalLifecycleOwner.current
     val snackbarHostState = remember { SnackbarHostState() }
@@ -133,8 +131,17 @@ fun PrivateVaultScreen(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             AnimatedContent(targetState = uiState.isLocked, label = "VaultContent") { locked ->
-                if (locked) VaultLockedContent(onUnlock = { activity?.let { viewModel.authenticate(it) } })
-                else {
+                if (locked) {
+                    if (!uiState.isPinSet) {
+                        VaultSetupPinContent(onPinSet = { viewModel.setVaultPin(it) })
+                    } else {
+                        VaultUnlockPinContent(
+                            remainingAttempts = uiState.remainingAttempts,
+                            lockoutUntil = uiState.lockoutUntil,
+                            onUnlock = { viewModel.unlockWithPin(it) }
+                        )
+                    }
+                } else {
                     if (showTrash) VaultTrashContent(uiState, viewModel)
                     else VaultDashboardContent(uiState, viewModel)
                 }
@@ -147,38 +154,181 @@ fun PrivateVaultScreen(
 }
 
 @Composable
-fun VaultLockedContent(onUnlock: () -> Unit) {
+fun VaultSetupPinContent(onPinSet: (String) -> Unit) {
+    var pin by remember { mutableStateOf("") }
+    var confirmPin by remember { mutableStateOf("") }
+    var step by remember { mutableStateOf(1) }
+
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp).verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Surface(
-            modifier = Modifier.size(100.dp),
-            shape = RoundedCornerShape(28.dp),
-            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f)
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(Icons.Outlined.Lock, null, modifier = Modifier.size(56.dp), tint = MaterialTheme.colorScheme.error)
+        Icon(Icons.Default.Security, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.height(24.dp))
+        Text(
+            if (step == 1) "Create Vault PIN" else "Confirm Vault PIN",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Security Warning: If you forget your PIN, your encrypted vault data cannot be recovered. There is no password reset option.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(32.dp))
+        
+        PinDisplay(if (step == 1) pin else confirmPin)
+        
+        Spacer(Modifier.height(32.dp))
+        
+        PinKeypad(
+            onDigit = { digit ->
+                if (step == 1) {
+                    if (pin.length < 6) pin += digit
+                } else {
+                    if (confirmPin.length < 6) confirmPin += digit
+                }
+            },
+            onDelete = {
+                if (step == 1) {
+                    if (pin.isNotEmpty()) pin = pin.dropLast(1)
+                } else {
+                    if (confirmPin.isNotEmpty()) confirmPin = confirmPin.dropLast(1)
+                }
             }
+        )
+        
+        Spacer(Modifier.height(32.dp))
+        
+        Button(
+            onClick = {
+                if (step == 1) {
+                    if (pin.length >= 4) step = 2
+                } else {
+                    if (pin == confirmPin) onPinSet(pin)
+                    else { confirmPin = ""; step = 1; pin = "" } // Reset on mismatch
+                }
+            },
+            enabled = if (step == 1) pin.length >= 4 else confirmPin.length == pin.length,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(if (step == 1) "Next" else "Set PIN")
         }
+    }
+}
+
+@Composable
+fun VaultUnlockPinContent(
+    remainingAttempts: Int,
+    lockoutUntil: Long,
+    onUnlock: (String) -> Unit
+) {
+    var pin by remember { mutableStateOf("") }
+    val isLockedOut = System.currentTimeMillis() < lockoutUntil
+
+    Column(
+        modifier = Modifier.fillMaxSize().padding(24.dp).verticalScroll(rememberScrollState()),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(Icons.Outlined.Lock, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.error)
         Spacer(Modifier.height(24.dp))
         Text("Vault is Locked", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Text(
-            "Hardware-backed AES-256 Encryption",
-            style = MaterialTheme.typography.bodyMedium,
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(Modifier.height(48.dp))
-        Button(
-            onClick = onUnlock,
-            modifier = Modifier.fillMaxWidth().height(56.dp),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Icon(Icons.Default.Fingerprint, null)
-            Spacer(Modifier.width(8.dp))
-            Text("Unlock Vault")
+        
+        if (isLockedOut) {
+            val timeLeft = (lockoutUntil - System.currentTimeMillis()) / 1000 / 60
+            Text(
+                "Too many failed attempts. Try again in ${timeLeft + 1} minutes.",
+                color = MaterialTheme.colorScheme.error,
+                textAlign = TextAlign.Center
+            )
+        } else {
+            if (remainingAttempts < 5) {
+                Text(
+                    "Remaining attempts: $remainingAttempts",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            Spacer(Modifier.height(32.dp))
+            PinDisplay(pin)
+            Spacer(Modifier.height(32.dp))
+            PinKeypad(
+                onDigit = { if (pin.length < 6) pin += it },
+                onDelete = { if (pin.isNotEmpty()) pin = pin.dropLast(1) }
+            )
+            Spacer(Modifier.height(32.dp))
+            Button(
+                onClick = { onUnlock(pin); pin = "" },
+                enabled = pin.length >= 4,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Unlock")
+            }
+        }
+    }
+}
+
+@Composable
+fun PinDisplay(pin: String) {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        repeat(6) { index ->
+            val isFilled = index < pin.length
+            Box(
+                modifier = Modifier
+                    .size(20.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (isFilled) MaterialTheme.colorScheme.primary 
+                        else MaterialTheme.colorScheme.surfaceVariant
+                    )
+            )
+        }
+    }
+}
+
+@Composable
+fun PinKeypad(onDigit: (String) -> Unit, onDelete: () -> Unit) {
+    val digits = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "DEL")
+    
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        repeat(4) { rowIndex ->
+            Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                repeat(3) { colIndex ->
+                    val digit = digits[rowIndex * 3 + colIndex]
+                    if (digit.isNotEmpty()) {
+                        KeypadButton(
+                            text = digit,
+                            onClick = { if (digit == "DEL") onDelete() else onDigit(digit) },
+                            isAction = digit == "DEL"
+                        )
+                    } else {
+                        Spacer(Modifier.size(64.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun KeypadButton(text: String, onClick: () -> Unit, isAction: Boolean = false) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.size(64.dp),
+        shape = CircleShape,
+        color = if (isAction) MaterialTheme.colorScheme.secondaryContainer 
+                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            if (text == "DEL") {
+                Icon(Icons.Default.Backspace, null)
+            } else {
+                Text(text, style = MaterialTheme.typography.headlineSmall)
+            }
         }
     }
 }
@@ -186,7 +336,6 @@ fun VaultLockedContent(onUnlock: () -> Unit) {
 @Composable
 fun VaultDashboardContent(uiState: com.sumitupdat.universalfileeditorviewer.viewmodel.VaultUiState, viewModel: com.sumitupdat.universalfileeditorviewer.viewmodel.VaultViewModel) {
     val context = LocalContext.current
-    val activity = context as? FragmentActivity
     
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -233,7 +382,7 @@ fun VaultDashboardContent(uiState: com.sumitupdat.universalfileeditorviewer.view
             items(uiState.vaultFiles, key = { it.id }) { file ->
                 VaultFileRow(
                     file = file,
-                    onRestore = { activity?.let { viewModel.restoreFile(it, file.id, context.getExternalFilesDir(null) ?: context.filesDir) } },
+                    onRestore = { viewModel.restoreFile(file.id, context.getExternalFilesDir(null) ?: context.filesDir) },
                     onTrash = { viewModel.moveToTrash(file.id) }
                 )
             }
@@ -263,7 +412,7 @@ fun VaultStatsCard(uiState: com.sumitupdat.universalfileeditorviewer.viewmodel.V
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     StatMetric("Files", uiState.fileCount.toString())
                     StatMetric("Health", "Optimal")
-                    StatMetric("Version", "v2.0")
+                    StatMetric("Version", "v2.1")
                 }
             }
         }
@@ -360,9 +509,6 @@ fun SectionHeader(title: String, icon: ImageVector) {
 
 @Composable
 fun VaultTrashContent(uiState: com.sumitupdat.universalfileeditorviewer.viewmodel.VaultUiState, viewModel: com.sumitupdat.universalfileeditorviewer.viewmodel.VaultViewModel) {
-    val context = LocalContext.current
-    val activity = context as? FragmentActivity
-    
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -392,7 +538,7 @@ fun VaultTrashContent(uiState: com.sumitupdat.universalfileeditorviewer.viewmode
                 TrashFileRow(
                     file = file,
                     onRestore = { viewModel.restoreFromTrash(file.id) },
-                    onDelete = { activity?.let { viewModel.deletePermanently(it, file.id) } }
+                    onDelete = { viewModel.deletePermanently(file.id) }
                 )
             }
         }

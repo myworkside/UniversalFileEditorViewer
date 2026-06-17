@@ -1,18 +1,16 @@
 package com.sumitupdat.universalfileeditorviewer.viewmodel
 
 import android.net.Uri
-import androidx.fragment.app.FragmentActivity
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sumitupdat.universalfileeditorviewer.data.local.VaultAuditLog
 import com.sumitupdat.universalfileeditorviewer.data.local.VaultFileEntity
 import com.sumitupdat.universalfileeditorviewer.data.repository.VaultRepository
-import com.sumitupdat.universalfileeditorviewer.util.security.VaultAuthManager
-import com.sumitupdat.universalfileeditorviewer.util.security.VaultManager
+import com.sumitupdat.universalfileeditorviewer.util.security.VaultSecurityManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.io.File
@@ -20,6 +18,9 @@ import javax.inject.Inject
 
 data class VaultUiState(
     val isLocked: Boolean = true,
+    val isPinSet: Boolean = false,
+    val remainingAttempts: Int = 5,
+    val lockoutUntil: Long = 0,
     val vaultFiles: List<VaultFileEntity> = emptyList(),
     val trashFiles: List<VaultFileEntity> = emptyList(),
     val auditLogs: List<VaultAuditLog> = emptyList(),
@@ -29,8 +30,6 @@ data class VaultUiState(
     val error: String? = null,
     val message: String? = null,
     val isLoading: Boolean = false,
-    val failedAttempts: Int = 0,
-    val isBruteForceLocked: Boolean = false,
     val sortOrder: String = "DATE",
     val searchQuery: String = ""
 )
@@ -38,7 +37,7 @@ data class VaultUiState(
 @HiltViewModel
 class VaultViewModel @Inject constructor(
     private val repository: VaultRepository,
-    private val authManager: VaultAuthManager
+    private val securityManager: VaultSecurityManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(VaultUiState())
@@ -47,10 +46,15 @@ class VaultViewModel @Inject constructor(
     private var collectionJob: Job? = null
 
     init {
-        if (!VaultManager.isKeyHealthy()) {
-            _uiState.update { it.copy(error = "Vault encryption key compromised. Data is inaccessible.") }
-        }
+        checkPinStatus()
         observeVaultData()
+    }
+
+    private fun checkPinStatus() {
+        viewModelScope.launch {
+            val isSet = securityManager.isPinSet()
+            _uiState.update { it.copy(isPinSet = isSet) }
+        }
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -82,46 +86,64 @@ class VaultViewModel @Inject constructor(
         }
     }
 
+    fun setVaultPin(pin: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+            if (securityManager.setPin(pin)) {
+                _uiState.update { it.copy(isPinSet = true, message = "PIN set successfully", isLoading = false) }
+            }
+        }
+    }
+
+    fun unlockWithPin(pin: String) {
+        viewModelScope.launch {
+            Log.d("VAULT", "PIN entered for verification")
+            _uiState.update { it.copy(isLoading = true) }
+            
+            val result = securityManager.verifyPin(pin)
+            Log.d("VAULT", "Verification result: $result")
+
+            when (result) {
+                is VaultSecurityManager.PinVerificationResult.Success -> {
+                    Log.d("VAULT", "Vault unlocked successfully")
+                    _uiState.update { it.copy(
+                        isLocked = false, 
+                        remainingAttempts = 5, 
+                        isLoading = false, 
+                        error = null 
+                    ) }
+                }
+                is VaultSecurityManager.PinVerificationResult.Invalid -> {
+                    _uiState.update { it.copy(
+                        remainingAttempts = result.remainingAttempts,
+                        error = "Incorrect PIN. ${result.remainingAttempts} attempts remaining.",
+                        isLoading = false
+                    ) }
+                }
+                is VaultSecurityManager.PinVerificationResult.Locked -> {
+                    _uiState.update { it.copy(
+                        lockoutUntil = result.until,
+                        error = "Vault locked due to multiple failed attempts.",
+                        isLoading = false
+                    ) }
+                }
+                is VaultSecurityManager.PinVerificationResult.Error -> {
+                    _uiState.update { it.copy(error = result.message, isLoading = false) }
+                }
+            }
+        }
+    }
+
+    fun lockVault() {
+        _uiState.update { it.copy(isLocked = true) }
+    }
+
     fun setSortOrder(order: String) {
         _uiState.update { it.copy(sortOrder = order) }
     }
 
     fun setSearchQuery(query: String) {
         _uiState.update { it.copy(searchQuery = query) }
-    }
-
-    fun authenticate(activity: FragmentActivity, onAuthenticated: () -> Unit = {}) {
-        if (_uiState.value.isBruteForceLocked) {
-            _uiState.update { it.copy(error = "Too many failed attempts. Try again later.") }
-            return
-        }
-
-        authManager.authenticate(
-            activity = activity,
-            onSuccess = {
-                _uiState.update { it.copy(isLocked = false, error = null, failedAttempts = 0) }
-                onAuthenticated()
-            },
-            onError = { msg ->
-                val newFailedCount = _uiState.value.failedAttempts + 1
-                _uiState.update { it.copy(error = msg, failedAttempts = newFailedCount) }
-                if (newFailedCount >= 5) {
-                    handleBruteForce()
-                }
-            }
-        )
-    }
-
-    private fun handleBruteForce() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isBruteForceLocked = true) }
-            delay(30000) // 30 second lockout
-            _uiState.update { it.copy(isBruteForceLocked = false, failedAttempts = 0) }
-        }
-    }
-
-    fun lockVault() {
-        _uiState.update { it.copy(isLocked = true) }
     }
 
     fun addFileToVault(uri: Uri) {
@@ -138,16 +160,14 @@ class VaultViewModel @Inject constructor(
         }
     }
 
-    fun restoreFile(activity: FragmentActivity, id: Long, targetDir: File) {
-        authenticate(activity) {
-            viewModelScope.launch {
-                _uiState.update { it.copy(isLoading = true) }
-                val result = repository.restoreFromVault(id, targetDir)
-                result.onSuccess { 
-                    _uiState.update { it.copy(message = "Restored as $it", isLoading = false) }
-                }.onFailure { 
-                    _uiState.update { it.copy(error = it.message, isLoading = false) }
-                }
+    fun restoreFile(id: Long, targetDir: File) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+            val result = repository.restoreFromVault(id, targetDir)
+            result.onSuccess { 
+                _uiState.update { it.copy(message = "Restored as $it", isLoading = false) }
+            }.onFailure { 
+                _uiState.update { it.copy(error = it.message, isLoading = false) }
             }
         }
     }
@@ -164,13 +184,11 @@ class VaultViewModel @Inject constructor(
         }
     }
 
-    fun deletePermanently(activity: FragmentActivity, id: Long) {
-        authenticate(activity) {
-            viewModelScope.launch {
-                _uiState.update { it.copy(isLoading = true) }
-                repository.deletePermanently(id)
-                _uiState.update { it.copy(message = "Deleted permanently", isLoading = false) }
-            }
+    fun deletePermanently(id: Long) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+            repository.deletePermanently(id)
+            _uiState.update { it.copy(message = "Deleted permanently", isLoading = false) }
         }
     }
 

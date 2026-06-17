@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.provider.Settings
 import android.util.Log
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -14,8 +15,12 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
 import com.sumitupdat.universalfileeditorviewer.data.local.ThemeMode
 import com.sumitupdat.universalfileeditorviewer.ui.screens.MainScreen
 import com.sumitupdat.universalfileeditorviewer.ui.theme.UniversalFileEditorViewerTheme
@@ -41,6 +46,19 @@ class MainActivity : ComponentActivity() {
         setContent {
             val settingsState by settingsViewModel.uiState.collectAsState()
             val prefs = settingsState.preferences
+            
+            val navController = rememberNavController()
+            val navBackStackEntry by navController.currentBackStackEntryAsState()
+            val currentRoute = navBackStackEntry?.destination?.route ?: "dashboard"
+
+            // Security: Disable screenshots/recording and hide from recents in Vault
+            LaunchedEffect(currentRoute) {
+                if (currentRoute == "vault") {
+                    window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
+                } else {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                }
+            }
 
             UniversalFileEditorViewerTheme(
                 darkTheme = when (prefs.theme) {
@@ -51,7 +69,7 @@ class MainActivity : ComponentActivity() {
                 dynamicColor = prefs.useDynamicColors,
                 isAmoled = prefs.isAmoled
             ) {
-                MainScreen(viewModel = fileViewModel)
+                MainScreen(viewModel = fileViewModel, navController = navController)
             }
         }
     }

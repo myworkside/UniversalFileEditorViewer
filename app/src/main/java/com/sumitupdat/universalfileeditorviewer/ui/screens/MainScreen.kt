@@ -47,8 +47,10 @@ data class NavItem(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreen(viewModel: FileViewModel) {
-    val navController = rememberNavController()
+fun MainScreen(
+    viewModel: FileViewModel,
+    navController: NavHostController = rememberNavController()
+) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route ?: "dashboard"
     
