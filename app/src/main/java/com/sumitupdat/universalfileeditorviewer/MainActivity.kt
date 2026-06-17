@@ -16,9 +16,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.navigation.NavHostController
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.sumitupdat.universalfileeditorviewer.data.local.ThemeMode
@@ -44,7 +43,7 @@ class MainActivity : ComponentActivity() {
         requestPermissions()
 
         setContent {
-            val settingsState by settingsViewModel.uiState.collectAsState()
+            val settingsState by settingsViewModel.uiState.collectAsStateWithLifecycle()
             val prefs = settingsState.preferences
             
             val navController = rememberNavController()
@@ -67,7 +66,9 @@ class MainActivity : ComponentActivity() {
                     ThemeMode.DARK -> true
                 },
                 dynamicColor = prefs.useDynamicColors,
-                isAmoled = prefs.isAmoled
+                isAmoled = prefs.isAmoled,
+                accentColor = if (prefs.useDynamicColors) null else prefs.accentColor,
+                fontSizeMultiplier = prefs.fontSizeMultiplier
             ) {
                 MainScreen(viewModel = fileViewModel, navController = navController)
             }

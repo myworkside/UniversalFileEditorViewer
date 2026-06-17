@@ -1,9 +1,9 @@
 package com.sumitupdat.universalfileeditorviewer.ui.theme
 
-import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -31,14 +31,15 @@ private val LightColorScheme = lightColorScheme(
 @Composable
 fun UniversalFileEditorViewerTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
     dynamicColor: Boolean = true,
     isAmoled: Boolean = false,
+    accentColor: Int? = null,
+    fontSizeMultiplier: Float = 1.0f,
     content: @Composable () -> Unit
 ) {
+    val context = LocalContext.current
     val colorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
             if (darkTheme) {
                 dynamicDarkColorScheme(context).let { 
                     if (isAmoled) it.copy(background = Color.Black, surface = Color.Black) else it 
@@ -48,13 +49,39 @@ fun UniversalFileEditorViewerTheme(
             }
         }
 
-        darkTheme -> if (isAmoled) DarkColorScheme else DarkColorScheme.copy(background = Color(0xFF1C1B1F), surface = Color(0xFF1C1B1F))
-        else -> LightColorScheme
+        darkTheme -> {
+            val base = if (isAmoled) DarkColorScheme else DarkColorScheme.copy(background = Color(0xFF1C1B1F), surface = Color(0xFF1C1B1F))
+            accentColor?.let { base.copy(primary = Color(it)) } ?: base
+        }
+        else -> {
+            accentColor?.let { LightColorScheme.copy(primary = Color(it)) } ?: LightColorScheme
+        }
     }
+
+    val baseTypography = com.sumitupdat.universalfileeditorviewer.ui.theme.Typography
+    val typography = if (fontSizeMultiplier != 1.0f) {
+        Typography(
+            displayLarge = baseTypography.displayLarge.copy(fontSize = baseTypography.displayLarge.fontSize * fontSizeMultiplier),
+            displayMedium = baseTypography.displayMedium.copy(fontSize = baseTypography.displayMedium.fontSize * fontSizeMultiplier),
+            displaySmall = baseTypography.displaySmall.copy(fontSize = baseTypography.displaySmall.fontSize * fontSizeMultiplier),
+            headlineLarge = baseTypography.headlineLarge.copy(fontSize = baseTypography.headlineLarge.fontSize * fontSizeMultiplier),
+            headlineMedium = baseTypography.headlineMedium.copy(fontSize = baseTypography.headlineMedium.fontSize * fontSizeMultiplier),
+            headlineSmall = baseTypography.headlineSmall.copy(fontSize = baseTypography.headlineSmall.fontSize * fontSizeMultiplier),
+            titleLarge = baseTypography.titleLarge.copy(fontSize = baseTypography.titleLarge.fontSize * fontSizeMultiplier),
+            titleMedium = baseTypography.titleMedium.copy(fontSize = baseTypography.titleMedium.fontSize * fontSizeMultiplier),
+            titleSmall = baseTypography.titleSmall.copy(fontSize = baseTypography.titleSmall.fontSize * fontSizeMultiplier),
+            bodyLarge = baseTypography.bodyLarge.copy(fontSize = baseTypography.bodyLarge.fontSize * fontSizeMultiplier),
+            bodyMedium = baseTypography.bodyMedium.copy(fontSize = baseTypography.bodyMedium.fontSize * fontSizeMultiplier),
+            bodySmall = baseTypography.bodySmall.copy(fontSize = baseTypography.bodySmall.fontSize * fontSizeMultiplier),
+            labelLarge = baseTypography.labelLarge.copy(fontSize = baseTypography.labelLarge.fontSize * fontSizeMultiplier),
+            labelMedium = baseTypography.labelMedium.copy(fontSize = baseTypography.labelMedium.fontSize * fontSizeMultiplier),
+            labelSmall = baseTypography.labelSmall.copy(fontSize = baseTypography.labelSmall.fontSize * fontSizeMultiplier)
+        )
+    } else baseTypography
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = Typography,
+        typography = typography,
         content = content
     )
 }

@@ -59,6 +59,7 @@
         implementation(libs.androidx.core.ktx)
         implementation(libs.androidx.documentfile)
         implementation(libs.androidx.lifecycle.runtime.ktx)
+        implementation(libs.androidx.lifecycle.runtime.compose)
         implementation(libs.androidx.navigation.compose)
         implementation(libs.androidx.room.runtime)
         implementation(libs.androidx.room.ktx)
@@ -74,6 +75,7 @@
         implementation(libs.poi.scratchpad)
         implementation(libs.junrar)
         implementation(libs.odfdom.java)
+        implementation(libs.androidx.datastore)
         implementation(libs.androidx.datastore.preferences)
         implementation(libs.kotlinx.serialization.json)
 

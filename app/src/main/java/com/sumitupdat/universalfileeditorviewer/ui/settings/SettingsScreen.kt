@@ -1,12 +1,15 @@
 package com.sumitupdat.universalfileeditorviewer.ui.settings
 
 import androidx.compose.animation.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -18,6 +21,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
@@ -25,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sumitupdat.universalfileeditorviewer.data.local.FileSortOrder
 import com.sumitupdat.universalfileeditorviewer.data.local.ThemeMode
 import com.sumitupdat.universalfileeditorviewer.data.local.UiDensity
@@ -38,7 +45,7 @@ fun SettingsScreen(
     onNavigateToLogs: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -59,6 +66,7 @@ fun SettingsScreen(
     var showThemeDialog by remember { mutableStateOf(false) }
     var showSortDialog by remember { mutableStateOf(false) }
     var showDensityDialog by remember { mutableStateOf(false) }
+    var showLanguageDialog by remember { mutableStateOf(false) }
 
     if (showThemeDialog) {
         ThemeSelectionDialog(
@@ -93,6 +101,17 @@ fun SettingsScreen(
         )
     }
 
+    if (showLanguageDialog) {
+        LanguageSelectionDialog(
+            currentLanguage = uiState.preferences.language,
+            onDismiss = { showLanguageDialog = false },
+            onSelect = {
+                viewModel.updateLanguage(it)
+                showLanguageDialog = false
+            }
+        )
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
@@ -107,12 +126,7 @@ fun SettingsScreen(
             )
         }
     ) { padding ->
-        val filteredPreferences = remember(uiState.searchQuery) {
-            // Simplified filtering: if search is active, we could show only relevant sections
-            // but for a true "search all settings", we'd need a list of all settings items.
-            // Let's implement a basic section-based visibility.
-            uiState.searchQuery.lowercase()
-        }
+        val filteredQuery = uiState.searchQuery.lowercase()
 
         LazyColumn(
             modifier = Modifier
@@ -149,42 +163,11 @@ fun SettingsScreen(
             }
 
             fun shouldShow(vararg keywords: String): Boolean {
-                if (filteredPreferences.isEmpty()) return true
-                return keywords.any { it.lowercase().contains(filteredPreferences) }
+                if (filteredQuery.isEmpty()) return true
+                return keywords.any { it.lowercase().contains(filteredQuery) }
             }
 
-            if (shouldShow("account", "developer", "profile", "sumit", "mondal", "instagram", "contact", "email")) {
-                item {
-                    SettingsSection(title = "Account & Developer") {
-                        if (shouldShow("profile", "sumit", "mondal")) {
-                            SettingsItem(
-                                title = "Profile Information",
-                                subtitle = "Sumit Mondal",
-                                icon = Icons.Outlined.Person,
-                                onClick = {}
-                            )
-                        }
-                        if (shouldShow("developer", "contact", "email")) {
-                            SettingsItem(
-                                title = "Developer Contact",
-                                subtitle = "INSTAGRAM",
-                                icon = Icons.Outlined.Email,
-                                onClick = {}
-                            )
-                        }
-                        if (shouldShow("instagram", "link")) {
-                            SettingsItem(
-                                title = "Instagram",
-                                subtitle = "@sumitupdat",
-                                icon = Icons.Outlined.Link,
-                                onClick = {}
-                            )
-                        }
-                    }
-                }
-            }
-
-            if (shouldShow("appearance", "theme", "amoled", "dark", "light", "dynamic", "color", "density")) {
+            if (shouldShow("appearance", "theme", "amoled", "dark", "light", "dynamic", "color", "density", "font")) {
                 item {
                     SettingsSection(title = "Appearance") {
                         if (shouldShow("theme", "dark", "light", "system")) {
@@ -217,6 +200,21 @@ fun SettingsScreen(
                                 onCheckedChange = viewModel::toggleDynamicColors
                             )
                         }
+                        
+                        if (!uiState.preferences.useDynamicColors && shouldShow("accent", "color")) {
+                            AccentColorPicker(
+                                selectedColor = uiState.preferences.accentColor,
+                                onColorSelect = viewModel::updateAccentColor
+                            )
+                        }
+
+                        if (shouldShow("font", "size", "text")) {
+                            FontSizeSlider(
+                                currentMultiplier = uiState.preferences.fontSizeMultiplier,
+                                onMultiplierChange = viewModel::updateFontSize
+                            )
+                        }
+
                         if (shouldShow("density", "ui", "compact", "cozy", "default")) {
                             SettingsItem(
                                 title = "UI Density",
@@ -403,6 +401,19 @@ fun SettingsScreen(
                 }
             }
 
+            if (shouldShow("language", "region", "date", "time")) {
+                item {
+                    SettingsSection(title = "Language & Region") {
+                        SettingsItem(
+                            title = "Language",
+                            subtitle = uiState.preferences.language,
+                            icon = Icons.Outlined.Language,
+                            onClick = { showLanguageDialog = true }
+                        )
+                    }
+                }
+            }
+
             if (shouldShow("about", "version", "name", "app", "premium")) {
                 item {
                     SettingsSection(title = "About") {
@@ -426,6 +437,74 @@ fun SettingsScreen(
                 }
             }
         }
+
+        if (uiState.isLoading) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        }
+    }
+}
+
+@Composable
+fun AccentColorPicker(
+    selectedColor: Int,
+    onColorSelect: (Int) -> Unit
+) {
+    val colors = listOf(
+        Color(0xFF6200EE), Color(0xFF03DAC6), Color(0xFF018786),
+        Color(0xFFB00020), Color(0xFF3700B3), Color(0xFFFF9800),
+        Color(0xFF4CAF50), Color(0xFF2196F3), Color(0xFFE91E63)
+    )
+
+    Column(Modifier.padding(16.dp)) {
+        Text("Accent Color", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            colors.forEach { color ->
+                val isSelected = color.toArgb() == selectedColor
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(color)
+                        .border(
+                            width = if (isSelected) 3.dp else 0.dp,
+                            color = if (isSelected) MaterialTheme.colorScheme.onSurface else Color.Transparent,
+                            shape = CircleShape
+                        )
+                        .clickable { onColorSelect(color.toArgb()) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun FontSizeSlider(
+    currentMultiplier: Float,
+    onMultiplierChange: (Float) -> Unit
+) {
+    var sliderValue by remember(currentMultiplier) { mutableFloatStateOf(currentMultiplier) }
+
+    Column(Modifier.padding(16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.FormatSize, null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(12.dp))
+            Text("Font Size", style = MaterialTheme.typography.bodyLarge)
+            Spacer(Modifier.weight(1f))
+            Text("${(sliderValue * 100).toInt()}%", style = MaterialTheme.typography.labelLarge)
+        }
+        Slider(
+            value = sliderValue,
+            onValueChange = { sliderValue = it },
+            onValueChangeFinished = { onMultiplierChange(sliderValue) },
+            valueRange = 0.8f..1.5f,
+            steps = 6
+        )
     }
 }
 
@@ -543,6 +622,47 @@ fun DensitySelectionDialog(
                         RadioButton(selected = (density == currentDensity), onClick = null)
                         Text(
                             text = density.name.lowercase().replaceFirstChar { it.uppercase() },
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.padding(start = 16.dp)
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+@Composable
+fun LanguageSelectionDialog(
+    currentLanguage: String,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit
+) {
+    val languages = listOf("System", "English", "Spanish", "French", "German", "Hindi", "Bengali")
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Select Language") },
+        text = {
+            LazyColumn(Modifier.selectableGroup().heightIn(max = 400.dp)) {
+                items(languages) { lang ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(56.dp)
+                            .selectable(
+                                selected = (lang == currentLanguage),
+                                onClick = { onSelect(lang) },
+                                role = Role.RadioButton
+                            )
+                            .padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(selected = (lang == currentLanguage), onClick = null)
+                        Text(
+                            text = lang,
                             style = MaterialTheme.typography.bodyLarge,
                             modifier = Modifier.padding(start = 16.dp)
                         )
