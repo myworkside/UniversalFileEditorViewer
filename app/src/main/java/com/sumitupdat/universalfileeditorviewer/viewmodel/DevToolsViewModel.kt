@@ -1,27 +1,34 @@
 package com.sumitupdat.universalfileeditorviewer.viewmodel
 
 import android.content.Context
-import android.os.Environment
+import android.database.sqlite.SQLiteDatabase
+import android.net.Uri
 import android.util.Log
+import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sumitupdat.universalfileeditorviewer.player.ApkAnalyzer
+import com.sumitupdat.universalfileeditorviewer.player.ApkInfo
+import com.sumitupdat.universalfileeditorviewer.util.IDELogger
+import com.sumitupdat.universalfileeditorviewer.util.LogEntry
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.io.File
 import javax.inject.Inject
 
 data class DevFile(
-    val file: File,
+    val file: File?,
+    val uri: Uri? = null,
+    val name: String,
     val content: String,
     val isModified: Boolean = false,
-    val language: String = "plaintext"
+    val language: String = "plaintext",
+    val cursorPosition: Int = 0
 )
 
 enum class PanelState { HIDDEN, HALF, EXPANDED }
@@ -29,18 +36,26 @@ enum class PanelState { HIDDEN, HALF, EXPANDED }
 data class DevToolsUiState(
     val openFiles: List<DevFile> = emptyList(),
     val activeFileIndex: Int = -1,
-    val terminalOutput: List<String> = listOf("Universal IDE Terminal v2.2", "Type 'help' for commands"),
-    val expandedFolders: Set<String> = emptySet(),
-    val explorerRoot: File? = null,
-    val commonFolders: List<File> = emptyList(),
-    val gitBranch: String = "main*",
+    val terminalOutput: List<String> = listOf("Universal IDE v3.0 Ready."),
+    val explorerRootUri: Uri? = null,
+    val explorerFiles: List<DocumentFile> = emptyList(),
+    val gitBranch: String = "main",
     val errorCount: Int = 0,
     val warningCount: Int = 0,
     val isLoading: Boolean = false,
     val statusMessage: String? = null,
     val panelState: PanelState = PanelState.HIDDEN,
-    val activeBottomTab: String = "terminal"
+    val activeBottomTab: String = "terminal",
+    val logs: List<LogEntry> = emptyList(),
+    val dbTables: List<String> = emptyList(),
+    val dbQueryResults: List<List<String>> = emptyList(),
+    val dbSchema: String = "",
+    val apkAnalysis: ApkInfo? = null,
+    val isSearching: Boolean = false,
+    val searchResults: List<SearchResult> = emptyList()
 )
+
+data class SearchResult(val fileName: String, val line: Int, val preview: String, val uri: Uri)
 
 @HiltViewModel
 class DevToolsViewModel @Inject constructor(
@@ -51,28 +66,229 @@ class DevToolsViewModel @Inject constructor(
     val uiState: StateFlow<DevToolsUiState> = _uiState.asStateFlow()
 
     private var autoSaveJob: Job? = null
-    private val MAX_FILE_SIZE = 2 * 1024 * 1024 // 2MB limit for editor
+    private val MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB limit
+    private val TAG = "DevToolsViewModel"
 
     init {
-        loadExplorerRoots()
+        viewModelScope.launch {
+            IDELogger.logs.collect { newLogs ->
+                _uiState.update { it.copy(logs = newLogs) }
+            }
+        }
+        IDELogger.i(TAG, "IDE Core Initialized")
     }
 
-    private fun loadExplorerRoots() {
-        val roots = mutableListOf<File>()
-        roots.add(Environment.getExternalStorageDirectory())
-        
-        val common = listOf(
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
-        )
-        
-        _uiState.update { 
-            it.copy(
-                explorerRoot = Environment.getExternalStorageDirectory(),
-                commonFolders = common.filter { f -> f.exists() }
+    fun setExplorerRoot(uri: Uri) {
+        try {
+            context.contentResolver.takePersistableUriPermission(
+                uri, 
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             )
+            _uiState.update { it.copy(explorerRootUri = uri) }
+            loadExplorerFiles(uri)
+            IDELogger.i(TAG, "Project root set: $uri")
+        } catch (e: Exception) {
+            IDELogger.e(TAG, "Failed to set project root: ${e.message}")
+        }
+    }
+
+    private fun loadExplorerFiles(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _uiState.update { it.copy(isLoading = true) }
+            val root = DocumentFile.fromTreeUri(context, uri)
+            // Lazy load first 100 items for performance
+            val files = root?.listFiles()?.sortedWith(
+                compareBy<DocumentFile> { !it.isDirectory }.thenBy { it.name?.lowercase() }
+            )?.take(100) ?: emptyList()
+            
+            _uiState.update { it.copy(explorerFiles = files, isLoading = false) }
+        }
+    }
+
+    fun openFile(docFile: DocumentFile) {
+        val existingIndex = _uiState.value.openFiles.indexOfFirst { it.uri == docFile.uri }
+        if (existingIndex != -1) {
+            selectTab(existingIndex)
+            return
+        }
+
+        if (docFile.length() > MAX_FILE_SIZE) {
+            _uiState.update { it.copy(statusMessage = "File too large. Opening first 5MB.") }
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            _uiState.update { it.copy(isLoading = true) }
+            try {
+                val content = context.contentResolver.openInputStream(docFile.uri)?.bufferedReader()?.use { it.readText() }?.take(MAX_FILE_SIZE) ?: ""
+                
+                val newFile = DevFile(
+                    file = null,
+                    uri = docFile.uri,
+                    name = docFile.name ?: "unnamed",
+                    content = content,
+                    language = detectLanguage(docFile.name?.substringAfterLast('.') ?: "")
+                )
+                _uiState.update { 
+                    it.copy(
+                        openFiles = it.openFiles + newFile,
+                        activeFileIndex = it.openFiles.size,
+                        isLoading = false
+                    )
+                }
+                IDELogger.d(TAG, "Opened file: ${docFile.name}")
+            } catch (e: Exception) {
+                IDELogger.e(TAG, "Failed to open file: ${e.message}")
+                _uiState.update { it.copy(isLoading = false, statusMessage = "Error: ${e.message}") }
+            }
+        }
+    }
+
+    fun selectTab(index: Int) {
+        if (index in _uiState.value.openFiles.indices) {
+            _uiState.update { it.copy(activeFileIndex = index) }
+        }
+    }
+
+    fun closeFile(index: Int) {
+        _uiState.update { state ->
+            val newList = state.openFiles.filterIndexed { i, _ -> i != index }
+            val newActiveIndex = when {
+                newList.isEmpty() -> -1
+                state.activeFileIndex == index -> if (index >= newList.size) newList.size - 1 else index
+                state.activeFileIndex > index -> state.activeFileIndex - 1
+                else -> state.activeFileIndex
+            }
+            state.copy(openFiles = newList, activeFileIndex = newActiveIndex)
+        }
+    }
+
+    fun updateActiveFileContent(newContent: String) {
+        val index = _uiState.value.activeFileIndex
+        if (index != -1) {
+            _uiState.update { state ->
+                val newList = state.openFiles.toMutableList()
+                newList[index] = newList[index].copy(content = newContent, isModified = true)
+                state.copy(openFiles = newList)
+            }
+            startAutoSaveTimer()
+        }
+    }
+
+    private fun startAutoSaveTimer() {
+        autoSaveJob?.cancel()
+        autoSaveJob = viewModelScope.launch {
+            delay(2000)
+            saveActiveFile()
+        }
+    }
+
+    fun saveActiveFile() {
+        val index = _uiState.value.activeFileIndex
+        if (index == -1) return
+        val devFile = _uiState.value.openFiles[index]
+        if (!devFile.isModified || devFile.uri == null) return
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                // Atomic save simulation using temp file is complex with SAF, 
+                // but we can at least ensure write success.
+                context.contentResolver.openOutputStream(devFile.uri, "wt")?.use { 
+                    it.write(devFile.content.toByteArray())
+                }
+                _uiState.update { state ->
+                    val newList = state.openFiles.toMutableList()
+                    if (index < newList.size) {
+                        newList[index] = newList[index].copy(isModified = false)
+                    }
+                    state.copy(openFiles = newList)
+                }
+                IDELogger.i(TAG, "Saved: ${devFile.name}")
+            } catch (e: Exception) {
+                IDELogger.e(TAG, "Save failed: ${e.message}")
+            }
+        }
+    }
+
+    fun analyzeApk(docFile: DocumentFile) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _uiState.update { it.copy(isLoading = true) }
+            val info = ApkAnalyzer(context).analyze(docFile.uri)
+            _uiState.update { it.copy(apkAnalysis = info, isLoading = false, activeBottomTab = "debug", panelState = PanelState.HALF) }
+        }
+    }
+
+    fun browseDatabase(docFile: DocumentFile) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _uiState.update { it.copy(isLoading = true) }
+            try {
+                val tempFile = File.createTempFile("db_browse_", ".db", context.cacheDir)
+                context.contentResolver.openInputStream(docFile.uri)?.use { input ->
+                    tempFile.outputStream().use { output -> input.copyTo(output) }
+                }
+                
+                val db = SQLiteDatabase.openDatabase(tempFile.path, null, SQLiteDatabase.OPEN_READONLY)
+                val cursor = db.rawQuery("SELECT name FROM sqlite_master WHERE type='table'", null)
+                val tables = mutableListOf<String>()
+                while (cursor.moveToNext()) tables.add(cursor.getString(0))
+                cursor.close()
+                db.close()
+                tempFile.delete()
+                
+                _uiState.update { it.copy(dbTables = tables, activeBottomTab = "database", panelState = PanelState.HALF, isLoading = false) }
+            } catch (e: Exception) {
+                IDELogger.e(TAG, "DB Error: ${e.message}")
+                _uiState.update { it.copy(isLoading = false, statusMessage = "DB Error: ${e.message}") }
+            }
+        }
+    }
+
+    fun executeCommand(command: String) {
+        val cmd = command.trim()
+        if (cmd.isEmpty()) return
+        
+        val output = when (cmd.lowercase().split(" ")[0]) {
+            "help" -> "Available: help, ls, pwd, clear, info, logs"
+            "ls" -> _uiState.value.explorerFiles.joinToString("\n") { (if (it.isDirectory) "[D] " else "[F] ") + (it.name ?: "") }
+            "pwd" -> _uiState.value.explorerRootUri?.toString() ?: "No project root"
+            "clear" -> {
+                _uiState.update { it.copy(terminalOutput = listOf("Terminal cleared.")) }
+                return
+            }
+            "info" -> "Universal IDE v3.1\nFiles Open: ${_uiState.value.openFiles.size}\nRoot: ${_uiState.value.explorerRootUri}"
+            "logs" -> "Showing last 10 entries:\n" + _uiState.value.logs.takeLast(10).joinToString("\n") { "[${it.level}] ${it.message}" }
+            else -> "Unknown command: $cmd"
+        }
+        _uiState.update { it.copy(terminalOutput = it.terminalOutput + "> $cmd" + output) }
+    }
+
+    fun searchInFiles(query: String) {
+        if (query.length < 2) return
+        val rootUri = _uiState.value.explorerRootUri ?: return
+        
+        viewModelScope.launch(Dispatchers.IO) {
+            _uiState.update { it.copy(isSearching = true, searchResults = emptyList()) }
+            val root = DocumentFile.fromTreeUri(context, rootUri) ?: return@launch
+            val results = mutableListOf<SearchResult>()
+            
+            fun searchRecursive(dir: DocumentFile) {
+                dir.listFiles().forEach { file ->
+                    if (file.isDirectory) searchRecursive(file)
+                    else {
+                        try {
+                            context.contentResolver.openInputStream(file.uri)?.bufferedReader()?.use { reader ->
+                                reader.lineSequence().forEachIndexed { index, line ->
+                                    if (line.contains(query, ignoreCase = true)) {
+                                        results.add(SearchResult(file.name ?: "unnamed", index + 1, line.trim(), file.uri))
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {}
+                    }
+                }
+            }
+            searchRecursive(root)
+            _uiState.update { it.copy(isSearching = false, searchResults = results) }
+            IDELogger.i(TAG, "Search finished: ${results.size} matches")
         }
     }
 
@@ -100,178 +316,9 @@ class DevToolsViewModel @Inject constructor(
         }
     }
 
-    fun openFile(file: File) {
-        val existingIndex = _uiState.value.openFiles.indexOfFirst { it.file.absolutePath == file.absolutePath }
-        if (existingIndex != -1) {
-            selectTab(existingIndex)
-            return
-        }
-
-        val isReadOnly = file.length() > MAX_FILE_SIZE
-        if (isReadOnly) {
-            _uiState.update { it.copy(statusMessage = "File too large (>2MB). Opening in read-only mode.") }
-        }
-
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
-            try {
-                val content = if (file.exists() && file.isFile) {
-                    file.bufferedReader().use { it.readText() }.take(MAX_FILE_SIZE)
-                } else ""
-                
-                val newFile = DevFile(
-                    file = file,
-                    content = content,
-                    language = detectLanguage(file.extension)
-                )
-                _uiState.update { 
-                    it.copy(
-                        openFiles = it.openFiles + newFile,
-                        activeFileIndex = it.openFiles.size,
-                        isLoading = false
-                    )
-                }
-                logTerminal("Opened: ${file.name}${if (isReadOnly) " [READ-ONLY]" else ""}")
-            } catch (e: Exception) {
-                Log.e("DevToolsVM", "Error opening file", e)
-                _uiState.update { it.copy(isLoading = false, statusMessage = "Failed to open file: ${e.message}") }
-            }
-        }
-    }
-
-    fun selectTab(index: Int) {
-        if (index in 0 until _uiState.value.openFiles.size) {
-            _uiState.update { it.copy(activeFileIndex = index) }
-        }
-    }
-
-    fun closeFile(index: Int) {
-        _uiState.update { state ->
-            val newList = state.openFiles.filterIndexed { i, _ -> i != index }
-            val newActiveIndex = when {
-                newList.isEmpty() -> -1
-                state.activeFileIndex == index -> if (index >= newList.size) newList.size - 1 else index
-                state.activeFileIndex > index -> state.activeFileIndex - 1
-                else -> state.activeFileIndex
-            }
-            state.copy(openFiles = newList, activeFileIndex = newActiveIndex)
-        }
-    }
-
-    fun updateActiveFileContent(newContent: String) {
-        val index = _uiState.value.activeFileIndex
-        if (index != -1) {
-            val devFile = _uiState.value.openFiles[index]
-            if (devFile.file.length() > MAX_FILE_SIZE) return // Block edits for read-only large files
-
-            _uiState.update { state ->
-                val newList = state.openFiles.toMutableList()
-                newList[index] = newList[index].copy(content = newContent, isModified = true)
-                state.copy(openFiles = newList)
-            }
-            startAutoSaveTimer()
-        }
-    }
-
-    private fun startAutoSaveTimer() {
-        autoSaveJob?.cancel()
-        autoSaveJob = viewModelScope.launch {
-            delay(2000)
-            saveActiveFile(isAutoSave = true)
-        }
-    }
-
-    fun saveActiveFile(isAutoSave: Boolean = false) {
-        val index = _uiState.value.activeFileIndex
-        if (index == -1) return
-        
-        val devFile = _uiState.value.openFiles.getOrNull(index) ?: return
-        if (!devFile.isModified) return
-
-        if (!devFile.file.canWrite()) {
-            if (!isAutoSave) _uiState.update { it.copy(statusMessage = "File is read-only. Cannot save.") }
-            return
-        }
-
-        viewModelScope.launch {
-            try {
-                devFile.file.writeText(devFile.content)
-                _uiState.update { state ->
-                    val newList = state.openFiles.toMutableList()
-                    val currentIndex = state.openFiles.indexOfFirst { it.file.absolutePath == devFile.file.absolutePath }
-                    if (currentIndex != -1) {
-                        newList[currentIndex] = newList[currentIndex].copy(isModified = false)
-                    }
-                    state.copy(openFiles = newList)
-                }
-                if (!isAutoSave) logTerminal("Saved: ${devFile.file.name}")
-            } catch (e: Exception) {
-                Log.e("DevToolsVM", "Error saving file", e)
-                if (!isAutoSave) _uiState.update { it.copy(statusMessage = "Save failed: ${e.message}") }
-            }
-        }
-    }
-
-    fun toggleFolder(path: String) {
-        _uiState.update { state ->
-            val newSet = state.expandedFolders.toMutableSet()
-            if (newSet.contains(path)) newSet.remove(path) else newSet.add(path)
-            state.copy(expandedFolders = newSet)
-        }
-    }
-
-    fun executeCommand(command: String) {
-        val cmd = command.trim()
-        val output = when (cmd.lowercase()) {
-            "help" -> "Available commands: help, ls, clear, date, whoami, pwd, info"
-            "ls" -> {
-                _uiState.value.explorerRoot?.listFiles()?.joinToString("\n") { 
-                    if (it.isDirectory) "[DIR] ${it.name}" else it.name 
-                } ?: "No files"
-            }
-            "pwd" -> _uiState.value.explorerRoot?.absolutePath ?: "/"
-            "whoami" -> "android-developer"
-            "date" -> java.util.Date().toString()
-            "info" -> "Universal IDE v2.2\nStorage: ${Environment.getExternalStorageState()}\nFiles Open: ${_uiState.value.openFiles.size}"
-            "clear" -> {
-                _uiState.update { it.copy(terminalOutput = listOf("Universal IDE Terminal v2.2", "Type 'help' for commands")) }
-                return
-            }
-            else -> "Command not found: $cmd"
-        }
-        logTerminal("> $cmd\n$output")
-    }
-
-    private fun logTerminal(message: String) {
-        _uiState.update { it.copy(terminalOutput = it.terminalOutput + message) }
-    }
-
-    fun searchInProject(query: String) {
-        if (query.isBlank()) return
-        logTerminal("Searching for: \"$query\"...")
-        // Simulated project search across open files
-        var foundCount = 0
-        _uiState.value.openFiles.forEach { devFile ->
-            if (devFile.content.contains(query, ignoreCase = true)) {
-                val lines = devFile.content.lines()
-                lines.forEachIndexed { index, line ->
-                    if (line.contains(query, ignoreCase = true)) {
-                        logTerminal("${devFile.file.name}:${index + 1}: ${line.trim()}")
-                        foundCount++
-                    }
-                }
-            }
-        }
-        logTerminal("Search finished. Found $foundCount matches in open files.")
-    }
-
-    fun clearStatusMessage() {
-        _uiState.update { it.copy(statusMessage = null) }
-    }
-
-    private fun detectLanguage(extension: String): String {
-        return when (extension.lowercase()) {
-            "kt" -> "kotlin"
+    private fun detectLanguage(ext: String): String {
+        return when (ext.lowercase()) {
+            "kt", "kts" -> "kotlin"
             "java" -> "java"
             "py" -> "python"
             "c", "cpp", "h", "hpp" -> "cpp"
@@ -285,4 +332,6 @@ class DevToolsViewModel @Inject constructor(
             else -> "plaintext"
         }
     }
+
+    fun clearStatusMessage() = _uiState.update { it.copy(statusMessage = null) }
 }

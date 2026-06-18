@@ -1,16 +1,16 @@
 package com.sumitupdat.universalfileeditorviewer.ui.screens.devtools
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.TextSelectionColors
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -20,6 +20,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -92,7 +93,8 @@ fun CodeEditorWorkspace(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(Icons.Default.Code, null, modifier = Modifier.size(64.dp), tint = Color.DarkGray)
                 Spacer(Modifier.height(16.dp))
-                Text("Select a file from Explorer to start editing", color = Color.Gray)
+                Text("Universal IDE v3.1", color = Color.Gray, fontWeight = FontWeight.Bold)
+                Text("Select a file from Explorer to start", color = Color.DarkGray, fontSize = 12.sp)
             }
         }
         return
@@ -121,9 +123,10 @@ fun CodeEditorWorkspace(
                     onValueChange = { viewModel.updateActiveFileContent(it) },
                     modifier = Modifier.fillMaxSize(),
                     visualTransformation = SyntaxHighlightTransformation(activeFile.language),
+                    enabled = activeFile.content.length < 5 * 1024 * 1024,
                     textStyle = TextStyle(
                         fontFamily = FontFamily.Monospace,
-                        fontSize = 14.sp,
+                        fontSize = 13.sp,
                         color = Color(0xFFD4D4D4)
                     ),
                     colors = TextFieldDefaults.colors(
@@ -131,11 +134,7 @@ fun CodeEditorWorkspace(
                         unfocusedContainerColor = Color.Transparent,
                         focusedIndicatorColor = Color.Transparent,
                         unfocusedIndicatorColor = Color.Transparent,
-                        cursorColor = Color(0xFF007ACC),
-                        selectionColors = TextSelectionColors(
-                            handleColor = Color(0xFF007ACC),
-                            backgroundColor = Color(0xFF007ACC).copy(alpha = 0.4f)
-                        )
+                        cursorColor = Color(0xFF007ACC)
                     )
                 )
             }
@@ -168,7 +167,7 @@ fun EditorTabBar(tabs: List<DevFile>, selectedTab: Int, onTabClick: (Int) -> Uni
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        val title = devFile.file.name
+                        val title = devFile.name
                         Icon(
                             imageVector = getFileIcon(title),
                             contentDescription = null,
@@ -199,7 +198,9 @@ fun getFileIcon(fileName: String): ImageVector {
     return when {
         fileName.endsWith(".kt") || fileName.endsWith(".java") -> Icons.Default.Code
         fileName.endsWith(".xml") || fileName.endsWith(".html") -> Icons.Default.Html
-        fileName.endsWith(".json") -> Icons.Default.DataObject
+        fileName.endsWith(".json") || fileName.endsWith(".js") -> Icons.Default.DataObject
+        fileName.endsWith(".db") -> Icons.Default.Storage
+        fileName.endsWith(".apk") -> Icons.Default.Android
         else -> Icons.Default.Description
     }
 }
@@ -210,6 +211,7 @@ fun getFileIconColor(fileName: String): Color {
         fileName.endsWith(".java") -> Color(0xFF007396)
         fileName.endsWith(".xml") -> Color(0xFFFFA500)
         fileName.endsWith(".html") -> Color(0xFFE34F26)
+        fileName.endsWith(".apk") -> Color(0xFF3DDC84)
         else -> Color.Gray
     }
 }
@@ -221,17 +223,21 @@ fun LineNumbers(lineCount: Int) {
             .fillMaxHeight()
             .width(40.dp)
             .background(Color(0xFF1E1E1E))
-            .padding(vertical = 16.dp),
+            .padding(vertical = 8.dp),
         horizontalAlignment = Alignment.End
     ) {
-        for (i in 1..lineCount) {
-            Text(
-                text = i.toString(),
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.DarkGray,
-                modifier = Modifier.padding(end = 8.dp),
-                fontSize = 12.sp
-            )
+        val scrollState = rememberScrollState()
+        Column(Modifier.verticalScroll(scrollState)) {
+            for (i in 1..lineCount) {
+                Text(
+                    text = i.toString(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFF858585),
+                    modifier = Modifier.padding(end = 8.dp, bottom = 1.dp),
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
         }
     }
 }
