@@ -3,7 +3,6 @@ package com.sumitupdat.universalfileeditorviewer.di
 import android.content.Context
 import com.sumitupdat.universalfileeditorviewer.data.local.AppDatabase
 import com.sumitupdat.universalfileeditorviewer.data.local.FileDao
-import com.sumitupdat.universalfileeditorviewer.data.local.TransferDao
 import com.sumitupdat.universalfileeditorviewer.data.local.VaultFileDao
 import dagger.Module
 import dagger.Provides
@@ -25,11 +24,6 @@ object DatabaseModule {
     @Provides
     fun provideFileDao(database: AppDatabase): FileDao {
         return database.fileDao()
-    }
-
-    @Provides
-    fun provideTransferDao(database: AppDatabase): TransferDao {
-        return database.transferDao()
     }
 
     @Provides

@@ -27,11 +27,6 @@ data class UserPreferences(
     val autoLockTimeoutMinutes: Int = 5,
     val secureDelete: Boolean = false,
 
-    // Wireless
-    val autoReceiveFiles: Boolean = false,
-    val backgroundTransfers: Boolean = true,
-    val deviceDiscovery: Boolean = true,
-
     // Language & Region
     val language: String = "System",
     val dateFormat: String = "dd/MM/yyyy",

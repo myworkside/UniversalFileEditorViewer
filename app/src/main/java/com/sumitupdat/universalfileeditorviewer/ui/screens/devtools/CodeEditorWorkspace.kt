@@ -1,16 +1,21 @@
 package com.sumitupdat.universalfileeditorviewer.ui.screens.devtools
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,30 +33,40 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.sumitupdat.universalfileeditorviewer.viewmodel.DevFile
+import com.sumitupdat.universalfileeditorviewer.viewmodel.DevToolsViewModel
 
-class KotlinVisualTransformation : VisualTransformation {
+class SyntaxHighlightTransformation(val language: String) : VisualTransformation {
     override fun filter(text: AnnotatedString): TransformedText {
         return TransformedText(
-            highlightKotlin(text.text),
+            highlightCode(text.text, language),
             OffsetMapping.Identity
         )
     }
 }
 
-fun highlightKotlin(code: String): AnnotatedString {
-    val keywords = listOf("package", "import", "class", "fun", "val", "var", "override", "if", "else", "when", "return", "true", "false", "this", "super")
+fun highlightCode(code: String, language: String): AnnotatedString {
+    val keywords = when(language) {
+        "kotlin", "java" -> listOf("package", "import", "class", "fun", "val", "var", "override", "if", "else", "when", "return", "true", "false", "this", "super", "private", "public", "protected", "interface", "object", "sealed", "enum", "data", "suspend", "coroutine", "inline", "infix", "internal")
+        "python" -> listOf("def", "class", "import", "from", "if", "else", "elif", "return", "True", "False", "None", "try", "except", "with", "as", "for", "in", "while", "lambda", "yield", "async", "await")
+        "javascript", "html" -> listOf("var", "let", "const", "function", "class", "if", "else", "return", "true", "false", "null", "undefined", "this", "new", "try", "catch", "finally", "import", "export", "async", "await")
+        "cpp" -> listOf("include", "namespace", "using", "std", "int", "float", "double", "bool", "void", "char", "class", "struct", "template", "typename", "public", "private", "protected", "if", "else", "while", "for", "switch", "case", "break", "continue", "return", "new", "delete", "try", "catch", "throw")
+        "xml", "html_tag" -> listOf("xml", "version", "encoding", "DOCTYPE", "html", "head", "body", "div", "span", "p", "h1", "h2", "h3", "a", "img", "ul", "ol", "li", "script", "style", "meta", "link", "title", "input", "button", "form", "label")
+        else -> emptyList()
+    }
     
     return buildAnnotatedString {
         var lastIndex = 0
-        val regex = Regex("""\b(${keywords.joinToString("|")})\b|"(.*?)"|//.*|/\*.*?\*/""", RegexOption.DOT_MATCHES_ALL)
+        val regex = Regex("""\b(${keywords.joinToString("|")})\b|"(.*?)"|'.*?'|//.*|/\*.*?\*/|#.*|<.*?>""", RegexOption.DOT_MATCHES_ALL)
         
         regex.findAll(code).forEach { match ->
-            // Add normal text before match
             append(code.substring(lastIndex, match.range.first))
             
             val style = when {
-                match.value.startsWith("\"") -> SpanStyle(color = Color(0xFF6A8759)) // String
-                match.value.startsWith("//") || match.value.startsWith("/*") -> SpanStyle(color = Color.Gray) // Comment
+                match.value.startsWith("\"") || match.value.startsWith("'") -> SpanStyle(color = Color(0xFF6A8759)) // String
+                match.value.startsWith("//") || match.value.startsWith("/*") || match.value.startsWith("#") -> SpanStyle(color = Color.Gray) // Comment
+                match.value.startsWith("<") && match.value.endsWith(">") -> SpanStyle(color = Color(0xFF569CD6)) // Tag
                 else -> SpanStyle(color = Color(0xFFCC7832), fontWeight = FontWeight.Bold) // Keyword
             }
             
@@ -64,229 +79,138 @@ fun highlightKotlin(code: String): AnnotatedString {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CodeEditorWorkspace(onBack: () -> Unit) {
-    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
-    val scope = rememberCoroutineScope()
+fun CodeEditorWorkspace(
+    modifier: Modifier = Modifier,
+    viewModel: DevToolsViewModel = hiltViewModel()
+) {
+    val uiState by viewModel.uiState.collectAsState()
+    val activeIndex = uiState.activeFileIndex
     
-    var selectedTab by remember { mutableStateOf(0) }
-    val openFiles = remember { mutableStateListOf("MainActivity.kt", "build.gradle", "AndroidManifest.xml") }
-    
-    var codeText by remember { mutableStateOf("""
-        package com.sumitupdat.universalfileeditorviewer
-
-        import android.os.Bundle
-        import androidx.activity.ComponentActivity
-        import androidx.activity.compose.setContent
-        import androidx.compose.material3.MaterialTheme
-
-        /**
-         * VS Code inspired workspace for Universal File Editor & Viewer
-         * Supports multi-tab editing, line numbers, and syntax highlights.
-         */
-        class MainActivity : ComponentActivity() {
-            override fun onCreate(savedInstanceState: Bundle?) {
-                super.onCreate(savedInstanceState)
-                setContent {
-                    MaterialTheme {
-                        // Your App Code Here
-                    }
-                }
+    if (activeIndex == -1) {
+        Box(modifier = modifier.fillMaxSize().background(Color(0xFF1E1E1E)), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Default.Code, null, modifier = Modifier.size(64.dp), tint = Color.DarkGray)
+                Spacer(Modifier.height(16.dp))
+                Text("Select a file from Explorer to start editing", color = Color.Gray)
             }
         }
-    """.trimIndent()) }
-
-    var showGoToLine by remember { mutableStateOf(false) }
-    var goToLineText by remember { mutableStateOf("") }
-
-    if (showGoToLine) {
-        AlertDialog(
-            onDismissRequest = { showGoToLine = false },
-            title = { Text("Go to Line") },
-            text = {
-                TextField(
-                    value = goToLineText,
-                    onValueChange = { if (it.all { char -> char.isDigit() }) goToLineText = it },
-                    placeholder = { Text("Enter line number") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { showGoToLine = false }) { Text("Go") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showGoToLine = false }) { Text("Cancel") }
-            }
-        )
+        return
     }
 
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        drawerContent = {
-            ModalDrawerSheet {
-                Spacer(Modifier.height(12.dp))
-                Text("Project Explorer", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium)
-                NavigationDrawerItem(
-                    label = { Text("app") },
-                    selected = false,
-                    onClick = { },
-                    icon = { Icon(Icons.Default.Folder, null) }
-                )
-                NavigationDrawerItem(
-                    label = { Text("  src") },
-                    selected = false,
-                    onClick = { },
-                    icon = { Icon(Icons.Default.Folder, null) },
-                    modifier = Modifier.padding(start = 16.dp)
-                )
-                NavigationDrawerItem(
-                    label = { Text("    main") },
-                    selected = false,
-                    onClick = { },
-                    icon = { Icon(Icons.Default.Folder, null) },
-                    modifier = Modifier.padding(start = 32.dp)
-                )
-                NavigationDrawerItem(
-                    label = { Text("      MainActivity.kt") },
-                    selected = true,
-                    onClick = { },
-                    icon = { Icon(Icons.Default.Code, null, tint = Color(0xFF7F52FF)) },
-                    modifier = Modifier.padding(start = 48.dp)
-                )
-            }
-        }
-    ) {
-        Scaffold(
-            topBar = {
-                TopAppBar(
-                    title = { Text("Workspace", style = MaterialTheme.typography.titleMedium) },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                        }
-                    },
-                    actions = {
-                        var showMenu by remember { mutableStateOf(false) }
-                        var wordWrap by remember { mutableStateOf(false) }
+    val activeFile = uiState.openFiles[activeIndex]
 
-                        IconButton(onClick = { /* Save */ }) { Icon(Icons.Default.Save, "Save") }
-                        IconButton(onClick = { /* Run */ }) { Icon(Icons.Default.PlayArrow, "Run", tint = Color(0xFF4CAF50)) }
-                        
-                        Box {
-                            IconButton(onClick = { showMenu = true }) { Icon(Icons.Default.MoreVert, "More") }
-                            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                                DropdownMenuItem(
-                                    text = { Text("Go To Line") },
-                                    onClick = { showGoToLine = true; showMenu = false },
-                                    leadingIcon = { Icon(Icons.Default.Numbers, null) }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Search & Replace") },
-                                    onClick = { showMenu = false },
-                                    leadingIcon = { Icon(Icons.Default.Search, null) }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Word Wrap: ${if (wordWrap) "On" else "Off"}") },
-                                    onClick = { wordWrap = !wordWrap; showMenu = false },
-                                    leadingIcon = { Icon(Icons.Default.WrapText, null) }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Format Code") },
-                                    onClick = { showMenu = false },
-                                    leadingIcon = { Icon(Icons.Default.FormatAlignLeft, null) }
-                                )
-                                Divider()
-                                DropdownMenuItem(
-                                    text = { Text("Dark Theme") },
-                                    onClick = { showMenu = false },
-                                    leadingIcon = { Icon(Icons.Default.DarkMode, null) }
-                                )
-                            }
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+    Column(modifier = modifier.fillMaxSize().background(Color(0xFF1E1E1E))) {
+        // Tab Bar
+        EditorTabBar(
+            tabs = uiState.openFiles,
+            selectedTab = activeIndex,
+            onTabClick = { viewModel.selectTab(it) },
+            onCloseClick = { viewModel.closeFile(it) }
+        )
+        
+        // Editor Area
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            Row(modifier = Modifier.fillMaxSize()) {
+                // Line Numbers
+                LineNumbers(lineCount = activeFile.content.lines().size)
+                
+                // Main Editor
+                TextField(
+                    value = activeFile.content,
+                    onValueChange = { viewModel.updateActiveFileContent(it) },
+                    modifier = Modifier.fillMaxSize(),
+                    visualTransformation = SyntaxHighlightTransformation(activeFile.language),
+                    textStyle = TextStyle(
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 14.sp,
+                        color = Color(0xFFD4D4D4)
+                    ),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        cursorColor = Color(0xFF007ACC),
+                        selectionColors = TextSelectionColors(
+                            handleColor = Color(0xFF007ACC),
+                            backgroundColor = Color(0xFF007ACC).copy(alpha = 0.4f)
+                        )
                     )
                 )
-            },
-            bottomBar = {
-                EditorStatusBar()
-            }
-        ) { padding ->
-            Column(modifier = Modifier.padding(padding).fillMaxSize()) {
-                // Tab Bar
-                EditorTabBar(
-                    tabs = openFiles,
-                    selectedTab = selectedTab,
-                    onTabClick = { selectedTab = it },
-                    onCloseClick = { if (openFiles.size > 1) openFiles.removeAt(it) }
-                )
-                
-                // Editor Area
-                Box(modifier = Modifier.weight(1f).fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
-                    Row(modifier = Modifier.fillMaxSize()) {
-                        // Line Numbers
-                        LineNumbers(lineCount = codeText.lines().size)
-                        
-                        // Main Editor
-                        TextField(
-                            value = codeText,
-                            onValueChange = { codeText = it },
-                            modifier = Modifier.fillMaxSize(),
-                            visualTransformation = KotlinVisualTransformation(),
-                            textStyle = TextStyle(
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 14.sp,
-                                color = MaterialTheme.colorScheme.onSurface
-                            ),
-                            colors = TextFieldDefaults.colors(
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent,
-                                focusedIndicatorColor = Color.Transparent,
-                                unfocusedIndicatorColor = Color.Transparent
-                            )
-                        )
-                    }
-                }
             }
         }
     }
 }
 
 @Composable
-fun EditorTabBar(tabs: List<String>, selectedTab: Int, onTabClick: (Int) -> Unit, onCloseClick: (Int) -> Unit) {
+fun EditorTabBar(tabs: List<DevFile>, selectedTab: Int, onTabClick: (Int) -> Unit, onCloseClick: (Int) -> Unit) {
     ScrollableTabRow(
         selectedTabIndex = selectedTab,
         edgePadding = 0.dp,
-        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-        divider = {}
+        containerColor = Color(0xFF252526),
+        divider = {},
+        indicator = { tabPositions ->
+            if (selectedTab < tabPositions.size) {
+                TabRowDefaults.SecondaryIndicator(
+                    modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
+                    color = Color(0xFF007ACC)
+                )
+            }
+        }
     ) {
-        tabs.forEachIndexed { index, title ->
+        tabs.forEachIndexed { index, devFile ->
             Tab(
                 selected = selectedTab == index,
                 onClick = { onTabClick(index) },
                 content = {
                     Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        val title = devFile.file.name
                         Icon(
-                            imageVector = if (title.endsWith(".kt")) Icons.Default.Code else Icons.Default.Description,
+                            imageVector = getFileIcon(title),
                             contentDescription = null,
                             modifier = Modifier.size(14.dp),
-                            tint = if (title.endsWith(".kt")) Color(0xFF7F52FF) else Color.Gray
+                            tint = getFileIconColor(title)
                         )
                         Spacer(Modifier.width(8.dp))
-                        Text(title, style = MaterialTheme.typography.labelMedium)
+                        Text(
+                            text = title, 
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (selectedTab == index) Color.White else Color.Gray
+                        )
+                        if (devFile.isModified) {
+                            Box(Modifier.padding(start = 4.dp).size(6.dp).background(Color.White, CircleShape))
+                        }
                         Spacer(Modifier.width(8.dp))
                         IconButton(onClick = { onCloseClick(index) }, modifier = Modifier.size(16.dp)) {
-                            Icon(Icons.Default.Close, null, modifier = Modifier.size(12.dp))
+                            Icon(Icons.Default.Close, null, modifier = Modifier.size(12.dp), tint = Color.Gray)
                         }
                     }
                 }
             )
         }
+    }
+}
+
+fun getFileIcon(fileName: String): ImageVector {
+    return when {
+        fileName.endsWith(".kt") || fileName.endsWith(".java") -> Icons.Default.Code
+        fileName.endsWith(".xml") || fileName.endsWith(".html") -> Icons.Default.Html
+        fileName.endsWith(".json") -> Icons.Default.DataObject
+        else -> Icons.Default.Description
+    }
+}
+
+fun getFileIconColor(fileName: String): Color {
+    return when {
+        fileName.endsWith(".kt") -> Color(0xFF7F52FF)
+        fileName.endsWith(".java") -> Color(0xFF007396)
+        fileName.endsWith(".xml") -> Color(0xFFFFA500)
+        fileName.endsWith(".html") -> Color(0xFFE34F26)
+        else -> Color.Gray
     }
 }
 
@@ -296,7 +220,7 @@ fun LineNumbers(lineCount: Int) {
         modifier = Modifier
             .fillMaxHeight()
             .width(40.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
+            .background(Color(0xFF1E1E1E))
             .padding(vertical = 16.dp),
         horizontalAlignment = Alignment.End
     ) {
@@ -304,33 +228,10 @@ fun LineNumbers(lineCount: Int) {
             Text(
                 text = i.toString(),
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                color = Color.DarkGray,
                 modifier = Modifier.padding(end = 8.dp),
                 fontSize = 12.sp
             )
-        }
-    }
-}
-
-@Composable
-fun EditorStatusBar() {
-    Surface(
-        modifier = Modifier.fillMaxWidth().height(24.dp),
-        color = MaterialTheme.colorScheme.primary
-    ) {
-        Row(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(Icons.Default.Sync, null, modifier = Modifier.size(12.dp), tint = Color.White)
-            Spacer(Modifier.width(4.dp))
-            Text("Main", style = MaterialTheme.typography.labelSmall, color = Color.White)
-            Spacer(Modifier.weight(1f))
-            Text("UTF-8", style = MaterialTheme.typography.labelSmall, color = Color.White)
-            Spacer(Modifier.width(12.dp))
-            Text("Kotlin", style = MaterialTheme.typography.labelSmall, color = Color.White)
-            Spacer(Modifier.width(12.dp))
-            Icon(Icons.Default.Check, null, modifier = Modifier.size(12.dp), tint = Color.White)
         }
     }
 }

@@ -169,27 +169,6 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun toggleAutoReceiveFiles(enabled: Boolean) {
-        viewModelScope.launch {
-            Log.d(TAG, "Saving Auto Receive Files: $enabled")
-            repository.updatePreferences { it.copy(autoReceiveFiles = enabled) }
-        }
-    }
-
-    fun toggleBackgroundTransfers(enabled: Boolean) {
-        viewModelScope.launch {
-            Log.d(TAG, "Saving Background Transfers: $enabled")
-            repository.updatePreferences { it.copy(backgroundTransfers = enabled) }
-        }
-    }
-
-    fun toggleDeviceDiscovery(enabled: Boolean) {
-        viewModelScope.launch {
-            Log.d(TAG, "Saving Device Discovery: $enabled")
-            repository.updatePreferences { it.copy(deviceDiscovery = enabled) }
-        }
-    }
-
     fun updateLanguage(lang: String) {
         viewModelScope.launch {
             Log.d(TAG, "Saving Language: $lang")

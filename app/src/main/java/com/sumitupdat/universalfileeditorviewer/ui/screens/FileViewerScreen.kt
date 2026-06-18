@@ -3,7 +3,6 @@ package com.sumitupdat.universalfileeditorviewer.ui.screens
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
-import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import android.webkit.MimeTypeMap
@@ -28,11 +27,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.FileProvider
-import androidx.media3.common.MediaItem
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import com.sumitupdat.universalfileeditorviewer.data.model.FileItem
+import com.sumitupdat.universalfileeditorviewer.player.AudioPlayerScreen
+import com.sumitupdat.universalfileeditorviewer.player.VideoPlayerScreen
 import com.sumitupdat.universalfileeditorviewer.ui.components.ZoomableBox
 import com.sumitupdat.universalfileeditorviewer.ui.screens.viewers.ArchiveViewerScreen
 import com.sumitupdat.universalfileeditorviewer.ui.screens.viewers.PptxViewerScreen
@@ -166,8 +164,8 @@ fun FileViewerScreen(fileItem: FileItem, viewModel: FileViewModel, onBack: () ->
                     ViewerType.IMAGE -> ZoomableBox(modifier = Modifier.fillMaxSize(), rotation = rotation.toFloat()) {
                         AsyncImage(model = file, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
                     }
-                    ViewerType.VIDEO -> VideoPlayer(file = file)
-                    ViewerType.AUDIO -> AudioPlayer(file = file)
+                    ViewerType.VIDEO -> VideoPlayerScreen(file = file, onBack = onBack)
+                    ViewerType.AUDIO -> AudioPlayerScreen(file = file, onBack = onBack)
                     ViewerType.PDF -> PdfViewer(file = file)
                     ViewerType.ARCHIVE -> ArchiveViewerScreen(
                         entries = archiveEntries,
@@ -201,29 +199,6 @@ fun FileViewerScreen(fileItem: FileItem, viewModel: FileViewModel, onBack: () ->
                 }
             }
         }
-    }
-}
-
-@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-@Composable
-fun VideoPlayer(file: File) {
-    val context = LocalContext.current
-    val exoPlayer = remember { ExoPlayer.Builder(context).build().apply { setMediaItem(MediaItem.fromUri(Uri.fromFile(file))); prepare() } }
-    DisposableEffect(Unit) { onDispose { exoPlayer.release() } }
-    AndroidView(factory = { PlayerView(context).apply { player = exoPlayer } }, modifier = Modifier.fillMaxSize())
-}
-
-@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-@Composable
-fun AudioPlayer(file: File) {
-    val context = LocalContext.current
-    val exoPlayer = remember { ExoPlayer.Builder(context).build().apply { setMediaItem(MediaItem.fromUri(Uri.fromFile(file))); prepare() } }
-    DisposableEffect(Unit) { onDispose { exoPlayer.release() } }
-    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-        Icon(Icons.Default.MusicNote, null, modifier = Modifier.size(120.dp), tint = MaterialTheme.colorScheme.primary)
-        Spacer(Modifier.height(24.dp))
-        Text(file.name, style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center, modifier = Modifier.padding(16.dp))
-        AndroidView(factory = { PlayerView(context).apply { player = exoPlayer; useController = true; controllerAutoShow = true } }, modifier = Modifier.fillMaxWidth().height(100.dp))
     }
 }
 

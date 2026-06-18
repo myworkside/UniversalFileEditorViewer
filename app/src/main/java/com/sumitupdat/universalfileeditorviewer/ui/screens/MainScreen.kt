@@ -66,7 +66,6 @@ fun MainScreen(
         NavItem("browser", "Explorer", Icons.Outlined.Folder, Icons.Filled.Folder),
         NavItem("recent", "Recent", Icons.Outlined.History, Icons.Filled.History),
         NavItem("favorites", "Favorites", Icons.Outlined.Star, Icons.Filled.Star),
-        NavItem("wireless", "Wireless Sharing", Icons.Outlined.Wifi, Icons.Filled.Wifi),
         NavItem("devtools", "Developer Tools", Icons.Outlined.Build, Icons.Filled.Build),
         NavItem("vault", "Private Vault", Icons.Outlined.Lock, Icons.Filled.Lock),
         NavItem("analyzer", "Analytics", Icons.Outlined.Analytics, Icons.Filled.Analytics),
@@ -76,7 +75,7 @@ fun MainScreen(
 
     // Screens that handle their own TopAppBar and layout
     val isFullscreenRoute = currentRoute in listOf(
-        "settings", "about", "wireless", "devtools", 
+        "settings", "about", "devtools",
         "vault", "analyzer", "favorites", "recent"
     ) || currentRoute.startsWith("viewer") || currentRoute.startsWith("devtools/")
 
@@ -327,34 +326,10 @@ fun MainScreen(
                                 onNavigateToVault = { navController.navigate("vault") }
                             )
                         }
-                        composable("wireless") {
-                            WirelessSharingScreen(onBack = { navController.popBackStack() })
-                        }
                         composable("devtools") {
                             DevToolsScreen(
-                                onBack = { navController.popBackStack() },
-                                onLaunchTool = { toolName ->
-                                    when (toolName) {
-                                        in codeEditors.map { it.name } -> navController.navigate("devtools/workspace")
-                                        "Manifest" -> navController.navigate("devtools/manifest")
-                                        "Permissions" -> navController.navigate("devtools/permissions")
-                                        "APK Analyzer" -> navController.navigate("devtools/apk_analyzer")
-                                        else -> navController.navigate("devtools/workspace")
-                                    }
-                                }
+                                onBack = { navController.popBackStack() }
                             )
-                        }
-                        composable("devtools/workspace") {
-                            CodeEditorWorkspace(onBack = { navController.popBackStack() })
-                        }
-                        composable("devtools/manifest") {
-                            ManifestViewer(onBack = { navController.popBackStack() })
-                        }
-                        composable("devtools/permissions") {
-                            PermissionInspector(onBack = { navController.popBackStack() })
-                        }
-                        composable("devtools/apk_analyzer") {
-                            ApkAnalyzer(onBack = { navController.popBackStack() })
                         }
                         composable("vault") {
                             PrivateVaultScreen(onBack = { navController.popBackStack() })
@@ -455,7 +430,6 @@ fun getRouteTitle(route: String): String {
         "browser" -> "Explorer"
         "recent" -> "Recent"
         "favorites" -> "Favorites"
-        "wireless" -> "Wireless Sharing"
         "devtools" -> "Developer Tools"
         "vault" -> "Private Vault"
         "analyzer" -> "Analytics"

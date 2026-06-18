@@ -257,34 +257,7 @@ fun SettingsScreen(
                 }
             }
 
-            // 4. Wireless Sharing
-            item {
-                SettingsSection(title = "Wireless Sharing") {
-                    SettingsSwitch(
-                        title = "Auto Receive Files",
-                        subtitle = "Accept files automatically",
-                        icon = Icons.Outlined.Wifi,
-                        checked = uiState.preferences.autoReceiveFiles,
-                        onCheckedChange = viewModel::toggleAutoReceiveFiles
-                    )
-                    SettingsSwitch(
-                        title = "Background Transfers",
-                        subtitle = "Keep transferring when app minimized",
-                        icon = Icons.Outlined.CloudSync,
-                        checked = uiState.preferences.backgroundTransfers,
-                        onCheckedChange = viewModel::toggleBackgroundTransfers
-                    )
-                    SettingsSwitch(
-                        title = "Device Discovery",
-                        subtitle = "Make this device visible to others",
-                        icon = Icons.Outlined.Radar,
-                        checked = uiState.preferences.deviceDiscovery,
-                        onCheckedChange = viewModel::toggleDeviceDiscovery
-                    )
-                }
-            }
-
-            // 5. Backup & Data
+            // 4. Backup & Data
             item {
                 SettingsSection(title = "Backup & Data") {
                     SettingsItem(
